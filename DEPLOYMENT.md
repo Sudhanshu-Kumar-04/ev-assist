@@ -9,6 +9,7 @@
 ## Deployment files
 
 - `render.yaml` defines the Render blueprint for the backend, ML service, and Postgres.
+- The Render frontend is created separately as a Static Site because Render blueprint import rejects `static` entries in this repo.
 - `backend/railway.json` defines the Railway config for the Node backend.
 - `ml/railway.json` defines the Railway config for the Flask ML service.
 - `frontend/railway.json` defines the Railway config for the React frontend.
@@ -57,8 +58,12 @@
 
 ## Frontend
 
-For Render, the frontend is included in `render.yaml` as a static site named `evassist-frontend`.
-It builds with `REACT_APP_API_BASE_URL` already pointed at the Render backend service.
+For Render, create the frontend as a separate Static Site from the same repo using:
+
+- `rootDir`: `frontend`
+- `buildCommand`: `npm install && npm run build`
+- `publishDir`: `build`
+- `REACT_APP_API_BASE_URL`: your Render backend URL plus `/api`
 
 For Railway, deploy `frontend/` as a separate service using [frontend/railway.json](/Users/sudhanshu/Desktop/Evassist/frontend/railway.json). The service builds the React app and serves the compiled `build/` folder with `serve`.
 
