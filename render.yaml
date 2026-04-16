@@ -1,0 +1,55 @@
+databases:
+  - name: evassist-db
+    databaseName: evassist
+    user: evassist
+
+services:
+  - type: static
+    name: evassist-frontend
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: build
+    autoDeploy: true
+    envVars:
+      - key: REACT_APP_API_BASE_URL
+        value: https://evassist-backend.onrender.com/api
+
+  - type: web
+    name: evassist-backend
+    env: node
+    rootDir: backend
+    plan: starter
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: START_ML_SERVICE
+        value: "false"
+      - key: PGSSL
+        value: "true"
+      - key: CORS_ORIGIN
+        value: https://evassist-frontend.onrender.com
+      - key: ML_SERVICE_URL
+        value: https://evassist-ml.onrender.com
+      - key: DATABASE_URL
+        fromDatabase:
+          name: evassist-db
+          property: connectionString
+
+  - type: web
+    name: evassist-ml
+    env: python
+    rootDir: ml
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 5002
+      - key: FLASK_DEBUG
+        value: "0"

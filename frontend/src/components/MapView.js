@@ -1,0 +1,417 @@
+import RoutePlanner from "./RoutePlanner";
+import React, { useEffect, useState } from "react";
+import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from "react-leaflet";
+import L from "leaflet";
+import axios from "axios";
+import ReservationModal from "./ReservationModal";
+import MyReservations from "./MyReservations";
+import CostEstimator from "./CostEstimator";
+import MyFavorites from "./MyFavorites";
+import { useAuth } from "../context/AuthContext";
+import "leaflet/dist/leaflet.css";
+
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl:
+    "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png",
+  iconUrl:
+    "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
+  shadowUrl:
+    "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
+});
+
+// Replace MapUpdater in MapView.js completely:
+function MapUpdater({ userLocation, setStations }) {
+  const map = useMap();
+
+  const fetchByBounds = async () => {
+    try {
+      const bounds = map.getBounds();
+      const north = bounds.getNorth();
+      const south = bounds.getSouth();
+      const east = bounds.getEast();
+      const west = bounds.getWest();
+      const zoom = map.getZoom();
+
+      const centerLat = (north + south) / 2;
+      const centerLng = (east + west) / 2;
+
+      // Calculate radius based on zoom level
+      // zoom 5 (all India) = 500km, zoom 10 = 100km, zoom 13 = 30km
+      const radiusKm = zoom <= 5 ? 500 :
+        zoom <= 7 ? 300 :
+          zoom <= 9 ? 150 :
+            zoom <= 11 ? 80 :
+              zoom <= 13 ? 50 : 30;
+
+      const res = await axios.get(
+        `/chargers?lat=${centerLat}&lng=${centerLng}&radius=${radiusKm}`
+      );
+      setStations(res.data);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (!userLocation) return;
+    fetchByBounds();
+    map.on("moveend", fetchByBounds);
+    map.on("zoomend", fetchByBounds);
+    return () => {
+      map.off("moveend", fetchByBounds);
+      map.off("zoomend", fetchByBounds);
+    };
+  }, [map, userLocation]);
+
+  return null;
+}
+
+// Helper function — add this above your MapView component
+function getConnectionLabel(station) {
+  if (station.connection_type && station.connection_type !== "Unknown")
+    return station.connection_type;
+  if (station.power_kw >= 50) return "DC Fast (CCS/CHAdeMO)";
+  if (station.power_kw >= 22) return "AC Type 2";
+  if (station.power_kw > 0) return "AC Type 1/2";
+  return "Standard AC";
+}
+
+function getCurrentLabel(station) {
+  if (station.current_type && station.current_type !== "Unknown")
+    return station.current_type;
+  if (station.power_kw >= 50) return "DC";
+  return "AC";
+}
+
+function getPowerLabel(station) {
+  if (station.power_kw) return `${station.power_kw} kW`;
+  return "Standard";
+}
+
+function LocateMe({ userLocation, setStations }) {
+  const map = useMap();
+
+  const goToMyLocation = () => {
+    if (!userLocation) return;
+    map.flyTo([userLocation.lat, userLocation.lng], 13, {
+      animate: true,
+      duration: 1.5,
+    });
+    // Re-fetch chargers near home location
+    axios.get(
+      `/chargers?lat=${userLocation.lat}&lng=${userLocation.lng}&radius=50`
+    ).then(res => setStations(res.data)).catch(console.error);
+  };
+
+  return (
+    <button
+      onClick={goToMyLocation}
+      title="Go to my location"
+      style={{
+        position: "absolute",
+        bottom: 30,
+        right: 12,
+        zIndex: 1000,
+        width: 40,
+        height: 40,
+        borderRadius: "50%",
+        background: "#fff",
+        border: "2px solid #e5e7eb",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+        cursor: "pointer",
+        fontSize: 18,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      📍
+    </button>
+  );
+}
+
+export default function MapView() {
+  const [userLocation, setUserLocation] = useState(null);
+  const [stations, setStations] = useState([]);
+  const [route, setRoute] = useState([]);
+  const { user, token } = useAuth();
+  const [reservingStation, setReservingStation] = useState(null);
+  const [estimatingStation, setEstimatingStation] = useState(null);
+  const [showMyReservations, setShowMyReservations] = useState(false);
+  const [waitTimes, setWaitTimes] = useState({});
+  const [waitLoading, setWaitLoading] = useState({});
+  const [favoriteIds, setFavoriteIds] = useState(new Set());
+  const [showFavorites, setShowFavorites] = useState(false);
+
+  const estimateWait = async (station) => {
+    if (!station?.id || waitTimes[station.id] || waitLoading[station.id]) return;
+
+    setWaitLoading((prev) => ({ ...prev, [station.id]: true }));
+    try {
+      const res = await axios.post("/chargers/predict-wait", {
+        power_kw: station.power_kw || 22,
+        num_ports: station.quantity || 2,
+        current_occupancy: 0,
+      });
+
+      if (res.data) {
+        setWaitTimes((prev) => ({ ...prev, [station.id]: res.data }));
+      }
+    } catch (error) {
+      console.error("Error estimating wait time:", error);
+    } finally {
+      setWaitLoading((prev) => ({ ...prev, [station.id]: false }));
+    }
+  };
+
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setUserLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          });
+        },
+        () => {
+          setUserLocation({ lat: 40.7128, lng: -74.006 }); // fallback to NYC
+        }
+      );
+    } else {
+      setUserLocation({ lat: 40.7128, lng: -74.006 });
+    }
+  }, []);
+
+  // Load user's favorite IDs on login so buttons show correct state
+  useEffect(() => {
+    if (!user || !token) { setFavoriteIds(new Set()); return; }
+    axios.get("/chargers/favorites", {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => {
+        const ids = new Set(res.data.map(c => c.id));
+        setFavoriteIds(ids);
+      })
+      .catch(console.error);
+  }, [user, token]);
+
+  const userIcon = new L.Icon({
+    iconUrl:
+      "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png",
+    shadowUrl:
+      "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+  });
+
+  // route is rendered via <Polyline /> below; no direct map instance required here
+  useEffect(() => {
+    if (route.length > 0) {
+      // If you need direct map control, use a map ref or react-leaflet's useMap in a child component.
+      console.log(`Drawing route with ${route.length} points`);
+    }
+  }, [route]);
+
+  // Replace addFavorite with this toggleFavorite function:
+  const toggleFavorite = async (station) => {
+    if (!user) { alert("Please sign in to save favorites ⭐"); return; }
+
+    const isFav = favoriteIds.has(station.id);
+
+    try {
+      if (isFav) {
+        // Remove
+        await axios.delete(
+          `/chargers/favorite/${station.id}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        setFavoriteIds(prev => {
+          const next = new Set(prev);
+          next.delete(station.id);
+          return next;
+        });
+      } else {
+        // Add
+        await axios.post(
+          `/chargers/favorite/${station.id}`,
+          {},
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        setFavoriteIds(prev => new Set([...prev, station.id]));
+      }
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed");
+    }
+  };
+
+  const loadFast = async () => {
+    if (!userLocation) return;
+    try {
+      const res = await axios.get(
+        `/chargers/fast?lat=${userLocation.lat}&lng=${userLocation.lng}`
+      );
+      setStations(res.data);
+    } catch (err) { console.error(err); }
+  };
+
+  const loadAll = async () => {
+    if (!userLocation) return;
+    try {
+      const res = await axios.get(
+        `/chargers?lat=${userLocation.lat}&lng=${userLocation.lng}&radius=50`
+      );
+      setStations(res.data);
+    } catch (err) { console.error(err); }
+  };
+
+  // Add this function in MapView:
+  const loadFavorites = async () => {
+    if (!user) { alert("Please sign in to view favorites"); return; }
+    try {
+      const res = await axios.get("/chargers/favorites", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setStations(res.data);
+      if (res.data.length === 0) alert("No favorites yet! Click ⭐ on any charger to save it.");
+    } catch (err) { console.error(err); }
+  };
+
+  if (!userLocation) return <p>Loading map...</p>;
+
+  return (
+    <>
+      <div style={{ padding: "10px", display: "flex", gap: "10px", zIndex: 1000, position: "absolute", top: "10px", left: "10px" }}>
+        <button onClick={loadFast}>⚡ Fast Chargers</button>
+        <button onClick={loadAll}>🔄 All Chargers</button>
+        {user && (
+          <button onClick={() => setShowFavorites(true)}>⭐ Favorites</button>
+        )}
+        {user && (
+          <button onClick={() => setShowMyReservations(true)}>📅 My Bookings</button>
+        )}
+      </div>
+      <RoutePlanner setStations={setStations} setRoute={setRoute} />
+      <MapContainer
+        center={[userLocation.lat, userLocation.lng]}
+        zoom={10}
+        style={{ height: "100vh", width: "100%" }}
+      >
+        <TileLayer
+          attribution="&copy; OpenStreetMap contributors"
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+
+        <MapUpdater userLocation={userLocation} setStations={setStations} />
+        <LocateMe userLocation={userLocation} setStations={setStations} />
+
+        <Marker position={[userLocation.lat, userLocation.lng]} icon={userIcon}>
+          <Popup>You are here</Popup>
+        </Marker>
+        {route.length > 0 && (
+          <Polyline positions={route} pathOptions={{ color: "blue", weight: 5 }} />
+        )}
+        {stations
+          .filter((s) => s.latitude && s.longitude)
+          .map((station) => (
+            <Marker
+              key={station.id}
+              position={[Number(station.latitude), Number(station.longitude)]}
+              eventHandlers={{ click: () => estimateWait(station) }}
+            >
+              <Popup>
+                <div style={{ minWidth: 200 }}>
+                  <b style={{ fontSize: 14 }}>{station.name}</b>
+                  <br /><br />
+                  ⚡ Power: <b>{getPowerLabel(station)}</b><br />
+                  🔌 Type: {getConnectionLabel(station)}<br />
+                  ⚙️ Current: {getCurrentLabel(station)}<br />
+                  🔢 Ports: {station.quantity || 1}<br />
+
+                  {waitLoading[station.id] ? (
+                    <div style={{ fontSize: 11, color: "#6b7280", margin: "6px 0" }}>
+                      🕐 Estimating...
+                    </div>
+                  ) : waitTimes[station.id] ? (
+                    <div style={{
+                      margin: "8px 0",
+                      display: "inline-block",
+                      padding: "3px 10px",
+                      borderRadius: 20,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      background:
+                        waitTimes[station.id].color === "green" ? "#d1fae5" :
+                          waitTimes[station.id].color === "yellow" ? "#fef9c3" :
+                            waitTimes[station.id].color === "orange" ? "#ffedd5" : "#fee2e2",
+                      color:
+                        waitTimes[station.id].color === "green" ? "#065f46" :
+                          waitTimes[station.id].color === "yellow" ? "#713f12" :
+                            waitTimes[station.id].color === "orange" ? "#7c2d12" : "#991b1b",
+                    }}>
+                      🕐 {waitTimes[station.id].label}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11, color: "#9ca3af", margin: "6px 0" }}>
+                      🕐 Click marker to estimate wait
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                    <button
+                      onClick={() => toggleFavorite(station)}
+                      style={{
+                        padding: "4px 8px", fontSize: 12, borderRadius: 6, cursor: "pointer",
+                        border: favoriteIds.has(station.id) ? "1px solid #fca5a5" : "1px solid #ddd",
+                        background: favoriteIds.has(station.id) ? "#fee2e2" : "#fff",
+                        color: favoriteIds.has(station.id) ? "#dc2626" : "#374151",
+                        fontWeight: favoriteIds.has(station.id) ? 600 : 400,
+                      }}
+                    >
+                      {favoriteIds.has(station.id) ? "💔 Remove" : "⭐ Favorite"}
+                    </button>
+                    {user ? (
+                      <>
+                        <button
+                          onClick={() => setReservingStation(station)}
+                          style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "none", background: "#2563eb", color: "#fff", cursor: "pointer", fontWeight: 600 }}
+                        >
+                          📅 Reserve
+                        </button>
+                        <button
+                          onClick={() => setEstimatingStation(station)}
+                          style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "none", background: "#059669", color: "#fff", cursor: "pointer", fontWeight: 600 }}
+                        >
+                          💰 Cost
+                        </button>
+                      </>
+                    ) : (
+                      <span style={{ fontSize: 11, color: "#9ca3af", alignSelf: "center" }}>Sign in to reserve</span>
+                    )}
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+      </MapContainer>
+      {reservingStation && (
+        <ReservationModal station={reservingStation} onClose={() => setReservingStation(null)} />
+      )}
+      {estimatingStation && (
+        <CostEstimator station={estimatingStation} onClose={() => setEstimatingStation(null)} />
+      )}
+      {showMyReservations && (
+        <MyReservations onClose={() => setShowMyReservations(false)} />
+      )}
+      {showFavorites && (
+        <MyFavorites onClose={() => {
+          setShowFavorites(false);
+          // Refresh favoriteIds after closing
+          axios.get("/chargers/favorites", {
+            headers: { Authorization: `Bearer ${token}` }
+          }).then(res => setFavoriteIds(new Set(res.data.map(c => c.id))));
+        }} />
+      )}
+    </>
+  );
+}

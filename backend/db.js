@@ -1,12 +1,17 @@
 const { Pool } = require("pg");
 
-const pool = new Pool({
-  user: "sudhanshu",
-  host: "localhost",
-  database: "evassist_db",
-  password: "",
-  port: 5432,
-});
+const pool = process.env.DATABASE_URL
+  ? new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.PGSSL === "true" ? { rejectUnauthorized: false } : undefined,
+  })
+  : new Pool({
+    user: process.env.PGUSER || "sudhanshu",
+    host: process.env.PGHOST || "localhost",
+    database: process.env.PGDATABASE || "evassist_db",
+    password: process.env.PGPASSWORD || "",
+    port: Number(process.env.PGPORT || 5432),
+  });
 
 const initDB = async () => {
   try {

@@ -4,27 +4,32 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 
-// Auto-start ML service
-const mlProcess = spawn(
-  path.join(__dirname, "../ml/venv/bin/python"),
-  [path.join(__dirname, "../ml/app.py")],
-  {
-    stdio: "inherit",
-    cwd: path.join(__dirname, "../ml"),  // ← add this, sets working directory to ml/
-  }
-);
+let mlProcess = null;
+if (process.env.START_ML_SERVICE !== "false") {
+  mlProcess = spawn(
+    process.env.ML_PYTHON || "python3",
+    [path.join(__dirname, "../ml/app.py")],
+    {
+      stdio: "inherit",
+      cwd: path.join(__dirname, "../ml"),
+    }
+  );
 
-mlProcess.on("error", (err) => {
-  console.warn("⚠️ ML service failed to start:", err.message);
-  console.warn("Wait-time predictions will be unavailable");
-});
+  mlProcess.on("error", (err) => {
+    console.warn("⚠️ ML service failed to start:", err.message);
+    console.warn("Wait-time predictions will be unavailable");
+  });
 
-process.on("exit", () => mlProcess.kill());
+  process.on("exit", () => mlProcess?.kill());
+}
+
 process.on("SIGINT", () => process.exit());
 process.on("SIGTERM", () => process.exit());
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",") : true,
+}));
 app.use(express.json());
 
 const { initDB } = require("./db");
@@ -41,7 +46,7 @@ app.use("/api/admin", adminRoutes);
 
 app.get("/", (req, res) => res.send("Server is running..."));
 
-const PORT = 5001;
+const PORT = process.env.PORT || 5001;
 
 // ✅ initDB MUST finish before server starts accepting requests
 initDB().then(() => {

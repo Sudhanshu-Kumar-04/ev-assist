@@ -3,6 +3,7 @@ const router = express.Router();
 const { pool } = require("../db");
 const axios = require("axios");
 const authenticate = require("../middleware/auth");
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:5002";
 const fetch = (...args) =>
 
   import("node-fetch").then(({ default: fetch }) => fetch(...args));
@@ -127,7 +128,7 @@ router.get("/sync", async (req, res) => {
       const address = item.AddressInfo?.AddressLine1
         || item.AddressInfo?.Town
         || item.AddressInfo?.StateOrProvince;
-      const latitude  = item.AddressInfo?.Latitude;
+      const latitude = item.AddressInfo?.Latitude;
       const longitude = item.AddressInfo?.Longitude;
       if (!title || !latitude || !longitude) continue;
 
@@ -137,11 +138,11 @@ router.get("/sync", async (req, res) => {
         || connections.find(c => c.ConnectionType?.Title)
         || connections[0] || {};
 
-      const power          = connection?.PowerKW || null;
+      const power = connection?.PowerKW || null;
       const connectionType = connection?.ConnectionType?.Title || null;
-      const currentType    = connection?.CurrentType?.Title
+      const currentType = connection?.CurrentType?.Title
         || (power >= 50 ? "DC" : power > 0 ? "AC" : null);
-      const quantity       = item.NumberOfPoints || connections.length || 1;
+      const quantity = item.NumberOfPoints || connections.length || 1;
 
       try {
         const r = await pool.query(`
@@ -374,7 +375,7 @@ router.get("/route", async (req, res) => {
 
 router.post("/predict-wait", async (req, res) => {
   try {
-    const response = await fetch("http://localhost:5002/predict", {
+    const response = await fetch(`${ML_SERVICE_URL}/predict`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req.body),
@@ -389,7 +390,7 @@ router.post("/predict-wait", async (req, res) => {
 
 router.post("/predict-wait/bulk", async (req, res) => {
   try {
-    const response = await fetch("http://localhost:5002/predict/bulk", {
+    const response = await fetch(`${ML_SERVICE_URL}/predict/bulk`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req.body),
