@@ -24,15 +24,18 @@ router.post("/register", async (req, res) => {
     if (existing.rows.length > 0)
       return res.status(409).json({ error: "Email already registered" });
 
-    // Bootstrap rule: first ever account becomes admin.
-    // Additionally, allow configured admin emails to sign up as admin.
+    // Bootstrap rule: first ever account becomes admin only when no
+    // explicit admin email list has been configured.
     const adminCountResult = await pool.query(
       "SELECT COUNT(*)::int AS count FROM users WHERE role = 'admin'"
     );
     const existingAdminCount = adminCountResult.rows[0]?.count || 0;
-    const role = existingAdminCount === 0 || ADMIN_EMAILS.includes(normalizedEmail)
+    const hasExplicitAdminList = ADMIN_EMAILS.length > 0;
+    const role = ADMIN_EMAILS.includes(normalizedEmail)
       ? "admin"
-      : "user";
+      : !hasExplicitAdminList && existingAdminCount === 0
+        ? "admin"
+        : "user";
 
     const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
 

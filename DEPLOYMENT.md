@@ -24,6 +24,7 @@
 - `JWT_SECRET` - required for auth.
 - `OCM_API_KEY` - OpenChargeMap API key.
 - `ORS_API_KEY` - OpenRouteService API key.
+- `ADMIN_EMAILS` - optional comma-separated admin emails. When set, only these emails are granted admin on signup.
 - `CORS_ORIGIN` - comma-separated frontend origin(s), for example `https://your-frontend.com`.
 - `ML_SERVICE_URL` - URL of the wait-time prediction service, for example `http://localhost:5002` or `https://your-ml-service.com`.
 - `START_ML_SERVICE=false` - set this if you host the ML service separately.
@@ -82,9 +83,10 @@ Set these backend environment variables in Render if they are not injected autom
 - `JWT_SECRET`
 - `OCM_API_KEY`
 - `ORS_API_KEY`
+- `ADMIN_EMAILS`
 - `CORS_ORIGIN`
 
-Set `CORS_ORIGIN` to the URL of your deployed frontend.
+Set `CORS_ORIGIN` to the URL of your deployed frontend. Set `ADMIN_EMAILS` to a comma-separated list of the accounts that should be admins, for example `you@example.com,ops@example.com`.
 
 ## Railway
 
@@ -101,6 +103,7 @@ Set these backend variables in Railway:
 - `JWT_SECRET`
 - `OCM_API_KEY`
 - `ORS_API_KEY`
+- `ADMIN_EMAILS`
 - `ML_SERVICE_URL`
 - `CORS_ORIGIN`
 - `START_ML_SERVICE=false`
