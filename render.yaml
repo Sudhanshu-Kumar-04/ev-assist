@@ -21,7 +21,7 @@ services:
       - key: PGSSL
         value: "true"
       - key: CORS_ORIGIN
-        value: https://evassist-frontend.onrender.com
+        value: https://ev-assist.onrender.com
       - key: ADMIN_EMAILS
         value: ""
       - key: ML_SERVICE_URL
