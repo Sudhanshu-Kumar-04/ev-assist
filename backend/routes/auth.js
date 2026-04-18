@@ -6,6 +6,10 @@ const { pool } = require("../db");
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const SALT_ROUNDS = 10;
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
+  .split(",")
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
 
 // ── Register ──────────────────────────────────────────────
 router.post("/register", async (req, res) => {
@@ -15,16 +19,27 @@ router.post("/register", async (req, res) => {
     return res.status(400).json({ error: "Name, email and password are required" });
 
   try {
+    const normalizedEmail = String(email).trim().toLowerCase();
     const existing = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
     if (existing.rows.length > 0)
       return res.status(409).json({ error: "Email already registered" });
 
+    // Bootstrap rule: first ever account becomes admin.
+    // Additionally, allow configured admin emails to sign up as admin.
+    const adminCountResult = await pool.query(
+      "SELECT COUNT(*)::int AS count FROM users WHERE role = 'admin'"
+    );
+    const existingAdminCount = adminCountResult.rows[0]?.count || 0;
+    const role = existingAdminCount === 0 || ADMIN_EMAILS.includes(normalizedEmail)
+      ? "admin"
+      : "user";
+
     const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
 
     const result = await pool.query(
-      `INSERT INTO users (name, email, password_hash, vehicle_model, battery_capacity_kwh, range_km)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, name, email, role`,
-      [name, email, password_hash, vehicle_model || null, battery_capacity_kwh || null, range_km || null]
+      `INSERT INTO users (name, email, password_hash, role, vehicle_model, battery_capacity_kwh, range_km)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, email, role`,
+      [name, email, password_hash, role, vehicle_model || null, battery_capacity_kwh || null, range_km || null]
     );
 
     const user = result.rows[0];

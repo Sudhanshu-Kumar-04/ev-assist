@@ -93,15 +93,44 @@ function LocateMe({ userLocation, setStations }) {
   const map = useMap();
 
   const goToMyLocation = () => {
-    if (!userLocation) return;
-    map.flyTo([userLocation.lat, userLocation.lng], 13, {
+    const fallback = userLocation || { lat: 28.6139, lng: 77.2090 };
+
+    // Always re-query the browser location on button click.
+    // This avoids being stuck at an old fallback location.
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          map.flyTo([lat, lng], 13, {
+            animate: true,
+            duration: 1.5,
+          });
+          axios.get(`/chargers?lat=${lat}&lng=${lng}&radius=50`)
+            .then((res) => setStations(res.data))
+            .catch(console.error);
+        },
+        () => {
+          map.flyTo([fallback.lat, fallback.lng], 11, {
+            animate: true,
+            duration: 1.2,
+          });
+          axios.get(`/chargers?lat=${fallback.lat}&lng=${fallback.lng}&radius=80`)
+            .then((res) => setStations(res.data))
+            .catch(console.error);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+      return;
+    }
+
+    map.flyTo([fallback.lat, fallback.lng], 11, {
       animate: true,
-      duration: 1.5,
+      duration: 1.2,
     });
-    // Re-fetch chargers near home location
-    axios.get(
-      `/chargers?lat=${userLocation.lat}&lng=${userLocation.lng}&radius=50`
-    ).then(res => setStations(res.data)).catch(console.error);
+    axios.get(`/chargers?lat=${fallback.lat}&lng=${fallback.lng}&radius=80`)
+      .then((res) => setStations(res.data))
+      .catch(console.error);
   };
 
   return (
@@ -132,6 +161,7 @@ function LocateMe({ userLocation, setStations }) {
 }
 
 export default function MapView() {
+  const DEFAULT_LOCATION = { lat: 28.6139, lng: 77.2090 };
   const [userLocation, setUserLocation] = useState(null);
   const [stations, setStations] = useState([]);
   const [route, setRoute] = useState([]);
@@ -175,11 +205,12 @@ export default function MapView() {
           });
         },
         () => {
-          setUserLocation({ lat: 40.7128, lng: -74.006 }); // fallback to NYC
-        }
+          setUserLocation(DEFAULT_LOCATION);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     } else {
-      setUserLocation({ lat: 40.7128, lng: -74.006 });
+      setUserLocation(DEFAULT_LOCATION);
     }
   }, []);
 

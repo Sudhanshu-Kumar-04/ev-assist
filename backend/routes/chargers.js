@@ -4,9 +4,38 @@ const { pool } = require("../db");
 const axios = require("axios");
 const authenticate = require("../middleware/auth");
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:5002";
+const ML_FALLBACK_URL = process.env.ML_FALLBACK_URL || "";
 const fetch = (...args) =>
 
   import("node-fetch").then(({ default: fetch }) => fetch(...args));
+
+const mlTargets = [ML_SERVICE_URL, ML_FALLBACK_URL].filter(Boolean);
+
+async function callMlService(path, payload) {
+  let lastError = null;
+
+  for (const baseUrl of mlTargets) {
+    try {
+      const response = await fetch(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`ML ${baseUrl} returned ${response.status}: ${body.slice(0, 200)}`);
+      }
+
+      return await response.json();
+    } catch (err) {
+      lastError = err;
+      console.warn(`ML target failed (${baseUrl}): ${err.message}`);
+    }
+  }
+
+  throw lastError || new Error("No ML targets configured");
+}
 
 // Sync chargers from OpenChargeMap into DB
 router.get("/sync-india", async (req, res) => {
@@ -375,12 +404,7 @@ router.get("/route", async (req, res) => {
 
 router.post("/predict-wait", async (req, res) => {
   try {
-    const response = await fetch(`${ML_SERVICE_URL}/predict`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(req.body),
-    });
-    const data = await response.json();
+    const data = await callMlService("/predict", req.body);
     res.json(data);
   } catch (err) {
     console.error("ML service error:", err.message);
@@ -390,12 +414,7 @@ router.post("/predict-wait", async (req, res) => {
 
 router.post("/predict-wait/bulk", async (req, res) => {
   try {
-    const response = await fetch(`${ML_SERVICE_URL}/predict/bulk`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(req.body),
-    });
-    const data = await response.json();
+    const data = await callMlService("/predict/bulk", req.body);
     res.json(data);
   } catch (err) {
     res.status(503).json({ error: "Prediction service unavailable" });
