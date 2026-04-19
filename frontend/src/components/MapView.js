@@ -1,6 +1,6 @@
 import RoutePlanner from "./RoutePlanner";
 import React, { useEffect, useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Tooltip } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from "react-leaflet";
 import L from "leaflet";
 import axios from "axios";
 import ReservationModal from "./ReservationModal";
@@ -413,9 +413,6 @@ export default function MapView() {
               icon={chargerIcon}
               eventHandlers={{ click: () => estimateWait(station) }}
             >
-              <Tooltip direction="top" offset={[0, -10]} permanent={false} sticky={true}>
-                🔴 EV Charger
-              </Tooltip>
               <Popup>
                 <div style={{ minWidth: 200 }}>
                   {station.image_url ? (
