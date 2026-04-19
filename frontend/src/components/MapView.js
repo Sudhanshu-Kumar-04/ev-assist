@@ -1,6 +1,6 @@
 import RoutePlanner from "./RoutePlanner";
 import React, { useEffect, useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Tooltip } from "react-leaflet";
 import L from "leaflet";
 import axios from "axios";
 import ReservationModal from "./ReservationModal";
@@ -236,6 +236,15 @@ export default function MapView() {
     iconAnchor: [12, 41],
   });
 
+  const chargerIcon = new L.Icon({
+    iconUrl:
+      "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
+    shadowUrl:
+      "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+  });
+
   // route is rendered via <Polyline /> below; no direct map instance required here
   useEffect(() => {
     if (route.length > 0) {
@@ -312,14 +321,67 @@ export default function MapView() {
 
   return (
     <>
-      <div style={{ padding: "10px", display: "flex", gap: "10px", zIndex: 1000, position: "absolute", top: "10px", left: "10px" }}>
-        <button onClick={loadFast}>⚡ Fast Chargers</button>
-        <button onClick={loadAll}>🔄 All Chargers</button>
+      <div style={{
+        padding: "10px",
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "8px",
+        zIndex: 1000,
+        position: "absolute",
+        top: "10px",
+        left: "10px",
+        backgroundColor: "rgba(255, 255, 255, 0.95)",
+        borderRadius: "8px",
+        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.15)",
+        maxWidth: "calc(100vw - 20px)",
+      }}>
+        <button onClick={loadFast} style={{
+          padding: "8px 12px",
+          fontSize: "14px",
+          borderRadius: "6px",
+          border: "1px solid #ddd",
+          background: "#fff",
+          cursor: "pointer",
+          fontWeight: 500,
+          whiteSpace: "nowrap",
+          minWidth: "120px",
+        }}>⚡ Fast Chargers</button>
+        <button onClick={loadAll} style={{
+          padding: "8px 12px",
+          fontSize: "14px",
+          borderRadius: "6px",
+          border: "1px solid #ddd",
+          background: "#fff",
+          cursor: "pointer",
+          fontWeight: 500,
+          whiteSpace: "nowrap",
+          minWidth: "120px",
+        }}>🔄 All Chargers</button>
         {user && (
-          <button onClick={() => setShowFavorites(true)}>⭐ Favorites</button>
+          <button onClick={() => setShowFavorites(true)} style={{
+            padding: "8px 12px",
+            fontSize: "14px",
+            borderRadius: "6px",
+            border: "1px solid #ddd",
+            background: "#fff",
+            cursor: "pointer",
+            fontWeight: 500,
+            whiteSpace: "nowrap",
+            minWidth: "110px",
+          }}>⭐ Favorites</button>
         )}
         {user && (
-          <button onClick={() => setShowMyReservations(true)}>📅 My Bookings</button>
+          <button onClick={() => setShowMyReservations(true)} style={{
+            padding: "8px 12px",
+            fontSize: "14px",
+            borderRadius: "6px",
+            border: "1px solid #ddd",
+            background: "#fff",
+            cursor: "pointer",
+            fontWeight: 500,
+            whiteSpace: "nowrap",
+            minWidth: "110px",
+          }}>📅 My Bookings</button>
         )}
       </div>
       <RoutePlanner setStations={setStations} setRoute={setRoute} />
@@ -348,8 +410,12 @@ export default function MapView() {
             <Marker
               key={station.id}
               position={[Number(station.latitude), Number(station.longitude)]}
+              icon={chargerIcon}
               eventHandlers={{ click: () => estimateWait(station) }}
             >
+              <Tooltip direction="top" offset={[0, -10]} permanent={false} sticky={true}>
+                🔴 EV Charger
+              </Tooltip>
               <Popup>
                 <div style={{ minWidth: 200 }}>
                   {station.image_url ? (
