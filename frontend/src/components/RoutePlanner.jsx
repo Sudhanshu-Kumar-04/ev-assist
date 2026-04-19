@@ -2,7 +2,11 @@ import React, { useState } from "react";
 import axios from "axios";
 import EVConfig from "./EVConfig";
 
-export default function RoutePlanner({ setStations, setRoute }) {
+export default function RoutePlanner({
+  setStations,
+  setRoute,
+  isMobile = false,
+}) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
@@ -23,7 +27,7 @@ export default function RoutePlanner({ setStations, setRoute }) {
       style={{
         padding: "12px",
         position: "absolute",
-        top: "100px",
+        top: isMobile ? "168px" : "100px",
         left: "10px",
         right: "10px",
         zIndex: 999,
@@ -41,7 +45,8 @@ export default function RoutePlanner({ setStations, setRoute }) {
         style={{
           display: "flex",
           gap: "8px",
-          flexWrap: "wrap",
+          flexWrap: isMobile ? "nowrap" : "wrap",
+          flexDirection: isMobile ? "column" : "row",
           alignItems: "center",
           marginTop: "12px",
         }}
@@ -51,8 +56,9 @@ export default function RoutePlanner({ setStations, setRoute }) {
           value={from}
           onChange={(e) => setFrom(e.target.value)}
           style={{
-            flex: "1",
-            minWidth: "120px",
+            flex: isMobile ? "none" : "1",
+            width: isMobile ? "100%" : "auto",
+            minWidth: isMobile ? "100%" : "120px",
             padding: "8px 12px",
             borderRadius: "6px",
             border: "1px solid #ddd",
@@ -66,8 +72,9 @@ export default function RoutePlanner({ setStations, setRoute }) {
           value={to}
           onChange={(e) => setTo(e.target.value)}
           style={{
-            flex: "1",
-            minWidth: "120px",
+            flex: isMobile ? "none" : "1",
+            width: isMobile ? "100%" : "auto",
+            minWidth: isMobile ? "100%" : "120px",
             padding: "8px 12px",
             borderRadius: "6px",
             border: "1px solid #ddd",
@@ -88,7 +95,8 @@ export default function RoutePlanner({ setStations, setRoute }) {
             fontWeight: 600,
             fontSize: "14px",
             whiteSpace: "nowrap",
-            minWidth: "110px",
+            minWidth: isMobile ? "100%" : "110px",
+            width: isMobile ? "100%" : "auto",
           }}
         >
           Find Route

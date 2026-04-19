@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import MapView from "./components/MapView";
 import AuthModal from "./components/AuthModal";
@@ -10,31 +10,57 @@ function AppInner() {
   const [showAuth, setShowAuth] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   if (loading) return <p style={{ padding: 20 }}>Loading...</p>;
 
   return (
     <>
       {/* Auth bar — top right */}
-      <div style={{ position: "absolute", top: 10, right: 10, zIndex: 1000, display: "flex", gap: 8, alignItems: "center" }}>
+      <div
+        style={{
+          position: "absolute",
+          top: 10,
+          right: 10,
+          zIndex: 3000,
+          display: "flex",
+          gap: 6,
+          alignItems: "center",
+          flexWrap: "wrap",
+          justifyContent: "flex-end",
+          maxWidth: "calc(100vw - 20px)",
+          background: "rgba(255,255,255,0.9)",
+          borderRadius: 10,
+          padding: "4px 6px",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+        }}
+      >
         {user ? (
           <>
             <span
               onClick={() => setShowProfile(true)}
               style={{
-                background: "#fff", padding: "6px 12px", borderRadius: 8, fontSize: 13,
+                background: "#fff", padding: isMobile ? "6px 8px" : "6px 12px", borderRadius: 8, fontSize: 13,
                 boxShadow: "0 2px 8px rgba(0,0,0,0.15)", cursor: "pointer"
-              }}>
-              👤 {user.name}
+              }}
+              title="Open profile"
+            >
+              {isMobile ? "👤 Profile" : `👤 ${user.name}`}
             </span>
             {user?.role === "admin" && (
               <button onClick={() => setShowAdmin(true)}
-                style={{ padding: "6px 12px", borderRadius: 8, background: "#1e293b", color: "#fff", border: "none", cursor: "pointer", fontSize: 13 }}>
-                ⚙️ Admin
+                style={{ padding: isMobile ? "6px 8px" : "6px 12px", borderRadius: 8, background: "#1e293b", color: "#fff", border: "none", cursor: "pointer", fontSize: 13 }}>
+                {isMobile ? "⚙️" : "⚙️ Admin"}
               </button>
             )}
-            <button onClick={logout} style={{ padding: "6px 12px", borderRadius: 8, background: "#ef4444", color: "#fff", border: "none", cursor: "pointer", fontSize: 13 }}>
-              Sign out
+            <button onClick={logout} style={{ padding: isMobile ? "6px 8px" : "6px 12px", borderRadius: 8, background: "#ef4444", color: "#fff", border: "none", cursor: "pointer", fontSize: 13 }}>
+              {isMobile ? "⎋" : "Sign out"}
             </button>
           </>
         ) : (

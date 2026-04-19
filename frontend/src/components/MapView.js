@@ -1,6 +1,6 @@
 import RoutePlanner from "./RoutePlanner";
 import React, { useEffect, useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, ZoomControl } from "react-leaflet";
 import L from "leaflet";
 import axios from "axios";
 import ReservationModal from "./ReservationModal";
@@ -162,6 +162,7 @@ function LocateMe({ userLocation, setStations }) {
 
 export default function MapView() {
   const DEFAULT_LOCATION = { lat: 28.6139, lng: 77.2090 };
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [userLocation, setUserLocation] = useState(null);
   const [stations, setStations] = useState([]);
   const [route, setRoute] = useState([]);
@@ -173,6 +174,12 @@ export default function MapView() {
   const [waitLoading, setWaitLoading] = useState({});
   const [favoriteIds, setFavoriteIds] = useState(new Set());
   const [showFavorites, setShowFavorites] = useState(false);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   const estimateWait = async (station) => {
     if (!station?.id || waitTimes[station.id] || waitLoading[station.id]) return;
@@ -328,12 +335,13 @@ export default function MapView() {
         gap: "8px",
         zIndex: 1000,
         position: "absolute",
-        top: "10px",
+        top: isMobile ? "62px" : "10px",
         left: "10px",
+        right: "10px",
         backgroundColor: "rgba(255, 255, 255, 0.95)",
         borderRadius: "8px",
         boxShadow: "0 2px 6px rgba(0, 0, 0, 0.15)",
-        maxWidth: "calc(100vw - 20px)",
+        width: "calc(100vw - 20px)",
       }}>
         <button onClick={loadFast} style={{
           padding: "8px 12px",
@@ -384,10 +392,11 @@ export default function MapView() {
           }}>📅 My Bookings</button>
         )}
       </div>
-      <RoutePlanner setStations={setStations} setRoute={setRoute} />
+      <RoutePlanner setStations={setStations} setRoute={setRoute} isMobile={isMobile} />
       <MapContainer
         center={[userLocation.lat, userLocation.lng]}
         zoom={10}
+        zoomControl={false}
         style={{ height: "100vh", width: "100%" }}
       >
         <TileLayer
@@ -397,6 +406,7 @@ export default function MapView() {
 
         <MapUpdater userLocation={userLocation} setStations={setStations} />
         <LocateMe userLocation={userLocation} setStations={setStations} />
+        <ZoomControl position="bottomleft" />
 
         <Marker position={[userLocation.lat, userLocation.lng]} icon={userIcon}>
           <Popup>You are here</Popup>
