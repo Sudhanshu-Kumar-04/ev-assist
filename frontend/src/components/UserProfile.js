@@ -16,37 +16,40 @@ export default function UserProfile({ onClose }) {
   });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ text: "", type: "" });
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const headers = { Authorization: `Bearer ${token}` };
 
   const validateProfile = () => {
+    const errors = {};
     const name = String(form.name || "").trim();
     const batteryRaw = form.battery_capacity_kwh;
     const rangeRaw = form.range_km;
 
-    if (!name) return "Full name is required";
+    if (!name) errors.name = "Full name is required";
 
     if (batteryRaw !== "") {
       const battery = Number(batteryRaw);
       if (Number.isNaN(battery) || battery <= 0) {
-        return "Battery capacity must be a positive number";
+        errors.battery_capacity_kwh = "Battery capacity must be a positive number";
       }
     }
 
     if (rangeRaw !== "") {
       const range = Number(rangeRaw);
       if (Number.isNaN(range) || range <= 0) {
-        return "Range must be a positive number";
+        errors.range_km = "Range must be a positive number";
       }
     }
 
-    return null;
+    return errors;
   };
 
   const saveProfile = async () => {
-    const validationError = validateProfile();
-    if (validationError) {
-      setMessage({ text: validationError, type: "error" });
+    const validationErrors = validateProfile();
+    setFieldErrors(validationErrors);
+    if (Object.keys(validationErrors).length > 0) {
+      setMessage({ text: "Please fix highlighted fields", type: "error" });
       return;
     }
 
@@ -132,11 +135,19 @@ export default function UserProfile({ onClose }) {
               <p style={s.sectionTitle}>Personal Information</p>
               <div style={s.field}>
                 <label style={s.label}>Full Name</label>
-                <input style={s.input} value={form.name}
+                <input style={{ ...s.input, ...(fieldErrors.name ? s.inputError : {}) }} value={form.name}
                   onChange={e => {
                     setForm({ ...form, name: e.target.value });
+                    if (fieldErrors.name) {
+                      setFieldErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.name;
+                        return next;
+                      });
+                    }
                     if (message.text) setMessage({ text: "", type: "" });
                   }} />
+                {fieldErrors.name ? <span style={s.fieldErrorText}>{fieldErrors.name}</span> : null}
               </div>
               <div style={s.field}>
                 <label style={s.label}>Email</label>
@@ -158,21 +169,37 @@ export default function UserProfile({ onClose }) {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div style={s.field}>
                   <label style={s.label}>Battery Capacity (kWh)</label>
-                  <input style={s.input} type="number" min="0" step="0.1" placeholder="e.g. 30.2"
+                  <input style={{ ...s.input, ...(fieldErrors.battery_capacity_kwh ? s.inputError : {}) }} type="number" min="0" step="0.1" placeholder="e.g. 30.2"
                     value={form.battery_capacity_kwh}
                     onChange={e => {
                       setForm({ ...form, battery_capacity_kwh: e.target.value });
+                      if (fieldErrors.battery_capacity_kwh) {
+                        setFieldErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.battery_capacity_kwh;
+                          return next;
+                        });
+                      }
                       if (message.text) setMessage({ text: "", type: "" });
                     }} />
+                  {fieldErrors.battery_capacity_kwh ? <span style={s.fieldErrorText}>{fieldErrors.battery_capacity_kwh}</span> : null}
                 </div>
                 <div style={s.field}>
                   <label style={s.label}>Range (km)</label>
-                  <input style={s.input} type="number" min="0" step="1" placeholder="e.g. 312"
+                  <input style={{ ...s.input, ...(fieldErrors.range_km ? s.inputError : {}) }} type="number" min="0" step="1" placeholder="e.g. 312"
                     value={form.range_km}
                     onChange={e => {
                       setForm({ ...form, range_km: e.target.value });
+                      if (fieldErrors.range_km) {
+                        setFieldErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.range_km;
+                          return next;
+                        });
+                      }
                       if (message.text) setMessage({ text: "", type: "" });
                     }} />
+                  {fieldErrors.range_km ? <span style={s.fieldErrorText}>{fieldErrors.range_km}</span> : null}
                 </div>
               </div>
 
@@ -255,6 +282,8 @@ const s = {
   field: { display: "flex", flexDirection: "column", gap: 4 },
   label: { fontSize: 12, fontWeight: 600, color: "#6b7280" },
   input: { padding: "9px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, outline: "none" },
+  inputError: { border: "1px solid #dc2626", background: "#fef2f2" },
+  fieldErrorText: { marginTop: 2, color: "#dc2626", fontSize: 12, fontWeight: 500 },
   statsCard: { background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 10, padding: 14 },
   statsTitle: { margin: "0 0 10px", fontSize: 12, fontWeight: 700, color: "#0369a1" },
   statsGrid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 },
