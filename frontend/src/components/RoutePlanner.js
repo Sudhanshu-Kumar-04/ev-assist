@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import axios from "axios";
 
-export default function RoutePlanner({ setStations, setRoute }) {
+export default function RoutePlanner({ setStations, setRoute, isMobile = false }) {
     const [from, setFrom] = useState("");
     const [to, setTo] = useState("");
     const [loading, setLoading] = useState(false);
@@ -79,28 +79,64 @@ export default function RoutePlanner({ setStations, setRoute }) {
     return (
         <div style={{
             position: "absolute",
-            top: "10px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 1000,
-            background: "white",
-            padding: "10px",
+            top: isMobile ? "62px" : "10px",
+            left: isMobile ? "10px" : "50%",
+            right: isMobile ? "10px" : "auto",
+            transform: isMobile ? "none" : "translateX(-50%)",
+            zIndex: 1200,
+            background: "rgba(255,255,255,0.96)",
+            padding: isMobile ? "8px" : "10px",
             borderRadius: "10px",
             display: "flex",
-            gap: "10px",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.2)"
+            gap: "8px",
+            flexDirection: isMobile ? "row" : "row",
+            boxShadow: "0 2px 10px rgba(0,0,0,0.2)",
+            width: isMobile ? "calc(100vw - 20px)" : "auto",
+            maxWidth: isMobile ? "calc(100vw - 20px)" : "none",
+            alignItems: "center",
         }}>
             <input
                 placeholder="From"
                 value={from}
                 onChange={(e) => setFrom(e.target.value)}
+                style={{
+                    flex: 1,
+                    minWidth: 0,
+                    padding: isMobile ? "8px 10px" : "8px 12px",
+                    borderRadius: "8px",
+                    border: "1px solid #d1d5db",
+                    fontSize: isMobile ? "13px" : "14px",
+                }}
             />
             <input
                 placeholder="To"
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
+                style={{
+                    flex: 1,
+                    minWidth: 0,
+                    padding: isMobile ? "8px 10px" : "8px 12px",
+                    borderRadius: "8px",
+                    border: "1px solid #d1d5db",
+                    fontSize: isMobile ? "13px" : "14px",
+                }}
             />
-            <button onClick={getRoute} disabled={loading}>
+            <button
+                onClick={getRoute}
+                disabled={loading}
+                style={{
+                    padding: isMobile ? "8px 10px" : "8px 14px",
+                    borderRadius: "8px",
+                    border: "none",
+                    background: "#111827",
+                    color: "#fff",
+                    cursor: "pointer",
+                    fontSize: isMobile ? "12px" : "14px",
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
+                    minWidth: isMobile ? "84px" : "110px",
+                }}
+            >
                 {loading ? "Finding..." : "Find Route"}
             </button>
         </div>

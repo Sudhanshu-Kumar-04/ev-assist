@@ -1,4 +1,4 @@
-import RoutePlanner from "./RoutePlanner";
+import RoutePlanner from "./RoutePlanner.js";
 import React, { useEffect, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, ZoomControl } from "react-leaflet";
 import L from "leaflet";
@@ -335,7 +335,7 @@ export default function MapView() {
         gap: "8px",
         zIndex: 1000,
         position: "absolute",
-        top: isMobile ? "62px" : "10px",
+        top: isMobile ? "122px" : "10px",
         left: "10px",
         right: "10px",
         backgroundColor: "rgba(255, 255, 255, 0.95)",
@@ -344,51 +344,55 @@ export default function MapView() {
         width: "calc(100vw - 20px)",
       }}>
         <button onClick={loadFast} style={{
-          padding: "8px 12px",
-          fontSize: "14px",
+          padding: isMobile ? "7px 10px" : "8px 12px",
+          fontSize: isMobile ? "12px" : "14px",
           borderRadius: "6px",
           border: "1px solid #ddd",
           background: "#fff",
           cursor: "pointer",
           fontWeight: 500,
           whiteSpace: "nowrap",
-          minWidth: "120px",
+          minWidth: isMobile ? "unset" : "120px",
+          width: isMobile ? "calc(50% - 4px)" : "auto",
         }}>⚡ Fast Chargers</button>
         <button onClick={loadAll} style={{
-          padding: "8px 12px",
-          fontSize: "14px",
+          padding: isMobile ? "7px 10px" : "8px 12px",
+          fontSize: isMobile ? "12px" : "14px",
           borderRadius: "6px",
           border: "1px solid #ddd",
           background: "#fff",
           cursor: "pointer",
           fontWeight: 500,
           whiteSpace: "nowrap",
-          minWidth: "120px",
+          minWidth: isMobile ? "unset" : "120px",
+          width: isMobile ? "calc(50% - 4px)" : "auto",
         }}>🔄 All Chargers</button>
         {user && (
           <button onClick={() => setShowFavorites(true)} style={{
-            padding: "8px 12px",
-            fontSize: "14px",
+            padding: isMobile ? "7px 10px" : "8px 12px",
+            fontSize: isMobile ? "12px" : "14px",
             borderRadius: "6px",
             border: "1px solid #ddd",
             background: "#fff",
             cursor: "pointer",
             fontWeight: 500,
             whiteSpace: "nowrap",
-            minWidth: "110px",
+            minWidth: isMobile ? "unset" : "110px",
+            width: isMobile ? "calc(50% - 4px)" : "auto",
           }}>⭐ Favorites</button>
         )}
         {user && (
           <button onClick={() => setShowMyReservations(true)} style={{
-            padding: "8px 12px",
-            fontSize: "14px",
+            padding: isMobile ? "7px 10px" : "8px 12px",
+            fontSize: isMobile ? "12px" : "14px",
             borderRadius: "6px",
             border: "1px solid #ddd",
             background: "#fff",
             cursor: "pointer",
             fontWeight: 500,
             whiteSpace: "nowrap",
-            minWidth: "110px",
+            minWidth: isMobile ? "unset" : "110px",
+            width: isMobile ? "calc(50% - 4px)" : "auto",
           }}>📅 My Bookings</button>
         )}
       </div>
