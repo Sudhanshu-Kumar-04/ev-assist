@@ -23,8 +23,16 @@ export default function UserProfile({ onClose }) {
     setLoading(true);
     setMessage({ text: "", type: "" });
     try {
+      const payload = {
+        name: String(form.name || "").trim(),
+        vehicle_model: String(form.vehicle_model || "").trim() || null,
+        battery_capacity_kwh:
+          form.battery_capacity_kwh === "" ? null : Number(form.battery_capacity_kwh),
+        range_km: form.range_km === "" ? null : Number(form.range_km),
+      };
+
       const res = await axios.put(
-        "/auth/me", form, { headers }
+        "/auth/me", payload, { headers }
       );
       // Update auth context with new user data
       login(token, res.data);

@@ -126,13 +126,36 @@ router.get("/me", authenticate, async (req, res) => {
 router.put("/me", authenticate, async (req, res) => {
   const { name, vehicle_model, battery_capacity_kwh, range_km } = req.body;
   try {
+    const normalizedName = String(name || "").trim();
+    if (!normalizedName) {
+      return res.status(400).json({ error: "Name is required" });
+    }
+
+    const normalizedVehicleModel = String(vehicle_model || "").trim() || null;
+    const normalizedBattery =
+      battery_capacity_kwh === "" || battery_capacity_kwh === null || battery_capacity_kwh === undefined
+        ? null
+        : Number(battery_capacity_kwh);
+    const normalizedRange =
+      range_km === "" || range_km === null || range_km === undefined
+        ? null
+        : Number(range_km);
+
+    if (normalizedBattery !== null && Number.isNaN(normalizedBattery)) {
+      return res.status(400).json({ error: "Battery capacity must be a valid number" });
+    }
+    if (normalizedRange !== null && Number.isNaN(normalizedRange)) {
+      return res.status(400).json({ error: "Range must be a valid number" });
+    }
+
     const result = await pool.query(
       `UPDATE users SET name=$1, vehicle_model=$2, battery_capacity_kwh=$3, range_km=$4
        WHERE id=$5 RETURNING id, name, email, role, vehicle_model, battery_capacity_kwh, range_km`,
-      [name, vehicle_model, battery_capacity_kwh, range_km, req.userId]
+      [normalizedName, normalizedVehicleModel, normalizedBattery, normalizedRange, req.userId]
     );
     res.json(result.rows[0]);
   } catch (err) {
+    console.error("Profile update error:", err);
     res.status(500).json({ error: "Update failed" });
   }
 });
