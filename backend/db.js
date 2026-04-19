@@ -39,17 +39,43 @@ const initDB = async () => {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS chargers (
         id SERIAL PRIMARY KEY,
+        ocm_id INTEGER,
         name VARCHAR(255),
         address TEXT,
+        town VARCHAR(120),
+        state VARCHAR(120),
         power_kw DECIMAL,
         connection_type VARCHAR(100),
         current_type VARCHAR(50),
         quantity INTEGER,
-        location GEOGRAPHY(POINT, 4326),
-        CONSTRAINT chargers_name_address_unique UNIQUE (name, address)
+        operator_name VARCHAR(150),
+        contact_phone VARCHAR(80),
+        website_url TEXT,
+        image_url TEXT,
+        usage_cost TEXT,
+        location GEOGRAPHY(POINT, 4326)
       )
     `);
     console.log("✅ chargers table ready");
+
+    // Backward-compatible migration path for already-provisioned databases.
+    await pool.query(`ALTER TABLE chargers ADD COLUMN IF NOT EXISTS ocm_id INTEGER`);
+    await pool.query(`ALTER TABLE chargers ADD COLUMN IF NOT EXISTS town VARCHAR(120)`);
+    await pool.query(`ALTER TABLE chargers ADD COLUMN IF NOT EXISTS state VARCHAR(120)`);
+    await pool.query(`ALTER TABLE chargers ADD COLUMN IF NOT EXISTS operator_name VARCHAR(150)`);
+    await pool.query(`ALTER TABLE chargers ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(80)`);
+    await pool.query(`ALTER TABLE chargers ADD COLUMN IF NOT EXISTS website_url TEXT`);
+    await pool.query(`ALTER TABLE chargers ADD COLUMN IF NOT EXISTS image_url TEXT`);
+    await pool.query(`ALTER TABLE chargers ADD COLUMN IF NOT EXISTS usage_cost TEXT`);
+
+    // Old dedupe collapsed different stations with similar names/addresses.
+    // Use OCM ID as the stable unique identity instead.
+    await pool.query(`ALTER TABLE chargers DROP CONSTRAINT IF EXISTS chargers_name_address_unique`);
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS chargers_ocm_id_unique
+      ON chargers (ocm_id)
+      WHERE ocm_id IS NOT NULL
+    `);
 
     // 3. Favorites table
     await pool.query(`

@@ -352,12 +352,28 @@ export default function MapView() {
             >
               <Popup>
                 <div style={{ minWidth: 200 }}>
+                  {station.image_url ? (
+                    <img
+                      src={station.image_url}
+                      alt={station.name}
+                      style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 8, marginBottom: 8 }}
+                    />
+                  ) : null}
                   <b style={{ fontSize: 14 }}>{station.name}</b>
                   <br /><br />
+                  {station.operator_name ? <>🏢 Operator: {station.operator_name}<br /></> : null}
+                  {(station.town || station.state) ? <>📍 {station.town || ""}{station.town && station.state ? ", " : ""}{station.state || ""}<br /></> : null}
                   ⚡ Power: <b>{getPowerLabel(station)}</b><br />
                   🔌 Type: {getConnectionLabel(station)}<br />
                   ⚙️ Current: {getCurrentLabel(station)}<br />
                   🔢 Ports: {station.quantity || 1}<br />
+                  {station.usage_cost ? <>💳 Cost: {station.usage_cost}<br /></> : null}
+                  {station.contact_phone ? <>📞 {station.contact_phone}<br /></> : null}
+                  {station.website_url ? (
+                    <>
+                      🌐 <a href={station.website_url} target="_blank" rel="noreferrer">Website</a><br />
+                    </>
+                  ) : null}
 
                   {waitLoading[station.id] ? (
                     <div style={{ fontSize: 11, color: "#6b7280", margin: "6px 0" }}>

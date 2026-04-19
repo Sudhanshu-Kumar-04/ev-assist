@@ -75,10 +75,13 @@ router.get("/sync-india", async (req, res) => {
       });
 
       for (const item of response.data) {
+        const ocmId = item.ID || null;
         const title = item.AddressInfo?.Title;
         const address = item.AddressInfo?.AddressLine1
           || item.AddressInfo?.Town
           || item.AddressInfo?.StateOrProvince;
+        const town = item.AddressInfo?.Town || null;
+        const state = item.AddressInfo?.StateOrProvince || null;
         const latitude = item.AddressInfo?.Latitude;
         const longitude = item.AddressInfo?.Longitude;
         if (!title || !latitude || !longitude) continue;
@@ -94,18 +97,34 @@ router.get("/sync-india", async (req, res) => {
         const currentType = connection?.CurrentType?.Title
           || (power >= 50 ? "DC" : power > 0 ? "AC" : null);
         const quantity = item.NumberOfPoints || connections.length || 1;
+        const operatorName = item.OperatorInfo?.Title || null;
+        const contactPhone = item.AddressInfo?.ContactTelephone1 || item.AddressInfo?.ContactTelephone2 || null;
+        const websiteUrl = item.AddressInfo?.RelatedURL || item.OperatorInfo?.WebsiteURL || null;
+        const imageUrl = item.MediaItems?.find((m) => m?.ItemURL)?.ItemURL || null;
+        const usageCost = item.UsageCost || null;
 
         try {
           const r = await pool.query(`
             INSERT INTO chargers
-              (name, address, power_kw, connection_type, current_type, quantity, location)
-            VALUES ($1,$2,$3,$4,$5,$6, ST_SetSRID(ST_MakePoint($7,$8),4326))
-            ON CONFLICT (name, address) DO UPDATE SET
+              (ocm_id, name, address, town, state, power_kw, connection_type, current_type, quantity,
+               operator_name, contact_phone, website_url, image_url, usage_cost, location)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, ST_SetSRID(ST_MakePoint($15,$16),4326))
+            ON CONFLICT (ocm_id) DO UPDATE SET
+              name = EXCLUDED.name,
+              address = EXCLUDED.address,
+              town = EXCLUDED.town,
+              state = EXCLUDED.state,
               power_kw = EXCLUDED.power_kw,
               connection_type = EXCLUDED.connection_type,
               current_type = EXCLUDED.current_type,
-              quantity = EXCLUDED.quantity
-          `, [title, address, power, connectionType, currentType, quantity, longitude, latitude]);
+              quantity = EXCLUDED.quantity,
+              operator_name = EXCLUDED.operator_name,
+              contact_phone = EXCLUDED.contact_phone,
+              website_url = EXCLUDED.website_url,
+              image_url = EXCLUDED.image_url,
+              usage_cost = EXCLUDED.usage_cost
+          `, [ocmId, title, address, town, state, power, connectionType, currentType, quantity,
+            operatorName, contactPhone, websiteUrl, imageUrl, usageCost, longitude, latitude]);
           if (r.rowCount > 0) totalInserted++;
         } catch (e) {
           // skip individual insert errors
@@ -153,10 +172,13 @@ router.get("/sync", async (req, res) => {
     let inserted = 0;
 
     for (const item of response.data) {
+      const ocmId = item.ID || null;
       const title = item.AddressInfo?.Title;
       const address = item.AddressInfo?.AddressLine1
         || item.AddressInfo?.Town
         || item.AddressInfo?.StateOrProvince;
+      const town = item.AddressInfo?.Town || null;
+      const state = item.AddressInfo?.StateOrProvince || null;
       const latitude = item.AddressInfo?.Latitude;
       const longitude = item.AddressInfo?.Longitude;
       if (!title || !latitude || !longitude) continue;
@@ -172,18 +194,34 @@ router.get("/sync", async (req, res) => {
       const currentType = connection?.CurrentType?.Title
         || (power >= 50 ? "DC" : power > 0 ? "AC" : null);
       const quantity = item.NumberOfPoints || connections.length || 1;
+      const operatorName = item.OperatorInfo?.Title || null;
+      const contactPhone = item.AddressInfo?.ContactTelephone1 || item.AddressInfo?.ContactTelephone2 || null;
+      const websiteUrl = item.AddressInfo?.RelatedURL || item.OperatorInfo?.WebsiteURL || null;
+      const imageUrl = item.MediaItems?.find((m) => m?.ItemURL)?.ItemURL || null;
+      const usageCost = item.UsageCost || null;
 
       try {
         const r = await pool.query(`
           INSERT INTO chargers
-            (name, address, power_kw, connection_type, current_type, quantity, location)
-          VALUES ($1,$2,$3,$4,$5,$6, ST_SetSRID(ST_MakePoint($7,$8), 4326))
-          ON CONFLICT (name, address) DO UPDATE SET
+            (ocm_id, name, address, town, state, power_kw, connection_type, current_type, quantity,
+             operator_name, contact_phone, website_url, image_url, usage_cost, location)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, ST_SetSRID(ST_MakePoint($15,$16), 4326))
+          ON CONFLICT (ocm_id) DO UPDATE SET
+            name            = EXCLUDED.name,
+            address         = EXCLUDED.address,
+            town            = EXCLUDED.town,
+            state           = EXCLUDED.state,
             power_kw        = EXCLUDED.power_kw,
             connection_type = EXCLUDED.connection_type,
             current_type    = EXCLUDED.current_type,
-            quantity        = EXCLUDED.quantity
-        `, [title, address, power, connectionType, currentType, quantity, longitude, latitude]);
+            quantity        = EXCLUDED.quantity,
+            operator_name   = EXCLUDED.operator_name,
+            contact_phone   = EXCLUDED.contact_phone,
+            website_url     = EXCLUDED.website_url,
+            image_url       = EXCLUDED.image_url,
+            usage_cost      = EXCLUDED.usage_cost
+        `, [ocmId, title, address, town, state, power, connectionType, currentType, quantity,
+          operatorName, contactPhone, websiteUrl, imageUrl, usageCost, longitude, latitude]);
         if (r.rowCount > 0) inserted++;
       } catch (e) {
         // skip duplicate errors
@@ -220,7 +258,9 @@ router.get("/", async (req, res) => {
 
       const result = await pool.query(`
         SELECT
-          id, name, address, power_kw, connection_type, current_type, quantity,
+          id, ocm_id, name, address, town, state,
+          power_kw, connection_type, current_type, quantity,
+          operator_name, contact_phone, website_url, image_url, usage_cost,
           ST_Y(location::geometry) AS latitude,
           ST_X(location::geometry) AS longitude,
           ST_Distance(
