@@ -127,7 +127,7 @@ router.get("/sync-india", async (req, res) => {
             operatorName, contactPhone, websiteUrl, imageUrl, usageCost, longitude, latitude]);
           if (r.rowCount > 0) totalInserted++;
         } catch (e) {
-          // skip individual insert errors
+          console.warn(`OCM upsert failed (id=${ocmId || "null"}, title=${title || "unknown"}): ${e.message}`);
         }
       }
 
@@ -224,7 +224,7 @@ router.get("/sync", async (req, res) => {
           operatorName, contactPhone, websiteUrl, imageUrl, usageCost, longitude, latitude]);
         if (r.rowCount > 0) inserted++;
       } catch (e) {
-        // skip duplicate errors
+        console.warn(`OCM upsert failed (id=${ocmId || "null"}, title=${title || "unknown"}): ${e.message}`);
       }
     }
 

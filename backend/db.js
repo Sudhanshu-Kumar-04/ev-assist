@@ -71,10 +71,10 @@ const initDB = async () => {
     // Old dedupe collapsed different stations with similar names/addresses.
     // Use OCM ID as the stable unique identity instead.
     await pool.query(`ALTER TABLE chargers DROP CONSTRAINT IF EXISTS chargers_name_address_unique`);
+    await pool.query(`DROP INDEX IF EXISTS chargers_ocm_id_unique`);
     await pool.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS chargers_ocm_id_unique
       ON chargers (ocm_id)
-      WHERE ocm_id IS NOT NULL
     `);
 
     // 3. Favorites table
