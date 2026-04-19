@@ -79,17 +79,17 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false }
     return (
         <div style={{
             position: "absolute",
-            top: isMobile ? "62px" : "10px",
+            top: isMobile ? "58px" : "10px",
             left: isMobile ? "10px" : "50%",
             right: isMobile ? "10px" : "auto",
             transform: isMobile ? "none" : "translateX(-50%)",
             zIndex: 1200,
             background: "rgba(255,255,255,0.96)",
-            padding: isMobile ? "8px" : "10px",
+            padding: isMobile ? "6px" : "10px",
             borderRadius: "10px",
-            display: "flex",
-            gap: "8px",
-            flexDirection: isMobile ? "row" : "row",
+            display: "grid",
+            gap: "6px",
+            gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr auto",
             boxShadow: "0 2px 10px rgba(0,0,0,0.2)",
             width: isMobile ? "calc(100vw - 20px)" : "auto",
             maxWidth: isMobile ? "calc(100vw - 20px)" : "none",
@@ -102,10 +102,10 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false }
                 style={{
                     flex: 1,
                     minWidth: 0,
-                    padding: isMobile ? "8px 10px" : "8px 12px",
+                    padding: isMobile ? "7px 8px" : "8px 12px",
                     borderRadius: "8px",
                     border: "1px solid #d1d5db",
-                    fontSize: isMobile ? "13px" : "14px",
+                    fontSize: isMobile ? "12px" : "14px",
                 }}
             />
             <input
@@ -115,17 +115,17 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false }
                 style={{
                     flex: 1,
                     minWidth: 0,
-                    padding: isMobile ? "8px 10px" : "8px 12px",
+                    padding: isMobile ? "7px 8px" : "8px 12px",
                     borderRadius: "8px",
                     border: "1px solid #d1d5db",
-                    fontSize: isMobile ? "13px" : "14px",
+                    fontSize: isMobile ? "12px" : "14px",
                 }}
             />
             <button
                 onClick={getRoute}
                 disabled={loading}
                 style={{
-                    padding: isMobile ? "8px 10px" : "8px 14px",
+                    padding: isMobile ? "7px 10px" : "8px 14px",
                     borderRadius: "8px",
                     border: "none",
                     background: "#111827",
@@ -134,7 +134,8 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false }
                     fontSize: isMobile ? "12px" : "14px",
                     fontWeight: 600,
                     whiteSpace: "nowrap",
-                    minWidth: isMobile ? "84px" : "110px",
+                    minWidth: isMobile ? "100%" : "110px",
+                    gridColumn: isMobile ? "1 / -1" : "auto",
                 }}
             >
                 {loading ? "Finding..." : "Find Route"}

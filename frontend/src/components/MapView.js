@@ -163,6 +163,7 @@ function LocateMe({ userLocation, setStations }) {
 export default function MapView() {
   const DEFAULT_LOCATION = { lat: 28.6139, lng: 77.2090 };
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [showMobileControls, setShowMobileControls] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
   const [stations, setStations] = useState([]);
   const [route, setRoute] = useState([]);
@@ -328,14 +329,36 @@ export default function MapView() {
 
   return (
     <>
+      {isMobile && (
+        <button
+          onClick={() => setShowMobileControls((prev) => !prev)}
+          style={{
+            position: "absolute",
+            top: "118px",
+            left: "10px",
+            zIndex: 1001,
+            padding: "6px 10px",
+            borderRadius: "8px",
+            border: "1px solid #d1d5db",
+            background: "rgba(255,255,255,0.95)",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+            fontSize: "12px",
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          {showMobileControls ? "Hide Controls" : "Show Controls"}
+        </button>
+      )}
+
       <div style={{
         padding: "10px",
-        display: "flex",
+        display: !isMobile || showMobileControls ? "flex" : "none",
         flexWrap: "wrap",
         gap: "8px",
         zIndex: 1000,
         position: "absolute",
-        top: isMobile ? "122px" : "10px",
+        top: isMobile ? "154px" : "10px",
         left: "10px",
         right: "10px",
         backgroundColor: "rgba(255, 255, 255, 0.95)",

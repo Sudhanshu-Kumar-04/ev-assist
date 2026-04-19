@@ -18,35 +18,36 @@ function AppInner() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  const authBarStyle = {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    left: isMobile ? 10 : "auto",
+    zIndex: 3000,
+    display: "flex",
+    gap: isMobile ? 4 : 6,
+    alignItems: "center",
+    flexWrap: "nowrap",
+    justifyContent: isMobile ? "space-between" : "flex-end",
+    maxWidth: isMobile ? "none" : "calc(100vw - 20px)",
+    background: "rgba(255,255,255,0.9)",
+    borderRadius: 10,
+    padding: isMobile ? "4px" : "4px 6px",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+  };
+
   if (loading) return <p style={{ padding: 20 }}>Loading...</p>;
 
   return (
     <>
       {/* Auth bar — top right */}
-      <div
-        style={{
-          position: "absolute",
-          top: 10,
-          right: 10,
-          zIndex: 3000,
-          display: "flex",
-          gap: 6,
-          alignItems: "center",
-          flexWrap: "wrap",
-          justifyContent: "flex-end",
-          maxWidth: "calc(100vw - 20px)",
-          background: "rgba(255,255,255,0.9)",
-          borderRadius: 10,
-          padding: "4px 6px",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
-        }}
-      >
+      <div style={authBarStyle}>
         {user ? (
           <>
             <span
               onClick={() => setShowProfile(true)}
               style={{
-                background: "#fff", padding: isMobile ? "6px 8px" : "6px 12px", borderRadius: 8, fontSize: 13,
+                background: "#fff", padding: isMobile ? "6px 8px" : "6px 12px", borderRadius: 8, fontSize: isMobile ? 12 : 13,
                 boxShadow: "0 2px 8px rgba(0,0,0,0.15)", cursor: "pointer"
               }}
               title="Open profile"
@@ -55,11 +56,11 @@ function AppInner() {
             </span>
             {user?.role === "admin" && (
               <button onClick={() => setShowAdmin(true)}
-                style={{ padding: isMobile ? "6px 8px" : "6px 12px", borderRadius: 8, background: "#1e293b", color: "#fff", border: "none", cursor: "pointer", fontSize: 13 }}>
+                style={{ padding: isMobile ? "6px 8px" : "6px 12px", borderRadius: 8, background: "#1e293b", color: "#fff", border: "none", cursor: "pointer", fontSize: isMobile ? 12 : 13 }}>
                 {isMobile ? "⚙️" : "⚙️ Admin"}
               </button>
             )}
-            <button onClick={logout} style={{ padding: isMobile ? "6px 8px" : "6px 12px", borderRadius: 8, background: "#ef4444", color: "#fff", border: "none", cursor: "pointer", fontSize: 13 }}>
+            <button onClick={logout} style={{ padding: isMobile ? "6px 8px" : "6px 12px", borderRadius: 8, background: "#ef4444", color: "#fff", border: "none", cursor: "pointer", fontSize: isMobile ? 12 : 13 }}>
               {isMobile ? "⎋" : "Sign out"}
             </button>
           </>
