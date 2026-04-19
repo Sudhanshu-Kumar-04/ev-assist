@@ -169,11 +169,12 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false, 
                 style={{
                     position: "absolute",
                     top: "58px",
-                    left: "10px",
+                    right: "10px",
                     zIndex: 1200,
                     display: "flex",
                     flexDirection: "column",
                     gap: "6px",
+                    alignItems: "flex-end",
                 }}
             >
                 <button
@@ -188,7 +189,7 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false, 
                         fontWeight: 600,
                         color: "#1f2937",
                         cursor: "pointer",
-                        alignSelf: "flex-start",
+                        alignSelf: "flex-end",
                     }}
                 >
                     {isOpen ? "Hide Route" : "Route Planner"}

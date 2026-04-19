@@ -14,8 +14,8 @@ code {
 
 @media (max-width: 768px) {
   .leaflet-bottom.leaflet-right .leaflet-control-zoom {
-    margin-bottom: 70px;
-    margin-right: 10px;
+    margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+    margin-right: 8px;
   }
 
   .leaflet-control-zoom a {

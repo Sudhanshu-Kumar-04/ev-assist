@@ -139,8 +139,8 @@ function LocateMe({ userLocation, setStations, isMobile }) {
       title="Go to my location"
       style={{
         position: "absolute",
-        bottom: isMobile ? 154 : 30,
-        right: 12,
+        bottom: isMobile ? "calc(env(safe-area-inset-bottom, 0px) + 116px)" : 30,
+        right: isMobile ? 8 : 12,
         zIndex: 1100,
         width: isMobile ? 48 : 40,
         height: isMobile ? 48 : 40,
