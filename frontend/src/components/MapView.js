@@ -1,5 +1,5 @@
 import RoutePlanner from "./RoutePlanner.js";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, ZoomControl } from "react-leaflet";
 import L from "leaflet";
 import axios from "axios";
@@ -20,12 +20,19 @@ L.Icon.Default.mergeOptions({
     "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
 });
 
-// Replace MapUpdater in MapView.js completely:
-function MapUpdater({ userLocation, setStations }) {
+// MapUpdater - fetches chargers based on visible map viewport
+function MapUpdater({ userLocation, setStations, mapRef }) {
   const map = useMap();
+
+  useEffect(() => {
+    mapRef.current = map;
+  }, [map, mapRef]);
 
   const fetchByBounds = async () => {
     try {
+      // Ensure map has valid bounds
+      if (!map.getBounds()) return;
+
       const bounds = map.getBounds();
       const north = bounds.getNorth();
       const south = bounds.getSouth();
@@ -36,17 +43,20 @@ function MapUpdater({ userLocation, setStations }) {
       const centerLat = (north + south) / 2;
       const centerLng = (east + west) / 2;
 
-      // Calculate radius based on zoom level
-      // zoom 5 (all India) = 500km, zoom 10 = 100km, zoom 13 = 30km
-      const radiusKm = zoom <= 5 ? 500 :
-        zoom <= 7 ? 300 :
-          zoom <= 9 ? 150 :
-            zoom <= 11 ? 80 :
-              zoom <= 13 ? 50 : 30;
+      // Calculate radius based on zoom level to match visible area
+      // Lower zoom = larger area, higher zoom = smaller radius
+      const radiusKm = zoom <= 5 ? 250 :   // Very zoomed out - 250km
+        zoom <= 7 ? 200 :                   // Zoomed out - 200km
+          zoom <= 9 ? 100 :                 // Regional view - 100km
+            zoom <= 11 ? 60 :               // City level - 60km
+              zoom <= 13 ? 40 : 25;         // Street level - 25km
+
+      console.log(`Fetching chargers at zoom ${zoom}, radius ${radiusKm}km, center (${centerLat.toFixed(4)}, ${centerLng.toFixed(4)})`);
 
       const res = await axios.get(
         `/chargers?lat=${centerLat}&lng=${centerLng}&radius=${radiusKm}`
       );
+      console.log(`Loaded ${res.data.length} chargers`);
       setStations(res.data);
     } catch (err) {
       console.error("Fetch error:", err);
@@ -55,10 +65,25 @@ function MapUpdater({ userLocation, setStations }) {
 
   useEffect(() => {
     if (!userLocation) return;
-    fetchByBounds();
+
+    // Wait for map to be fully loaded before first fetch
+    const handleMapReady = () => {
+      setTimeout(fetchByBounds, 200);
+    };
+
+    if (map.isLoading?.()) {
+      map.once("load", handleMapReady);
+    } else {
+      // Map already loaded
+      handleMapReady();
+    }
+
+    // Fetch on move and zoom
     map.on("moveend", fetchByBounds);
     map.on("zoomend", fetchByBounds);
+
     return () => {
+      map.off("load", handleMapReady);
       map.off("moveend", fetchByBounds);
       map.off("zoomend", fetchByBounds);
     };
@@ -176,6 +201,7 @@ export default function MapView() {
   const [waitLoading, setWaitLoading] = useState({});
   const [favoriteIds, setFavoriteIds] = useState(new Set());
   const [showFavorites, setShowFavorites] = useState(false);
+  const mapRef = useRef(null);
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 768);
@@ -295,21 +321,43 @@ export default function MapView() {
   };
 
   const loadFast = async () => {
-    if (!userLocation) return;
+    if (!mapRef.current) return;
     try {
+      const map = mapRef.current;
+      const bounds = map.getBounds();
+      const centerLat = (bounds.getNorth() + bounds.getSouth()) / 2;
+      const centerLng = (bounds.getEast() + bounds.getWest()) / 2;
+      const zoom = map.getZoom();
+
+      // Use same radius calculation as MapUpdater
+      const radiusKm = zoom <= 5 ? 250 : zoom <= 7 ? 200 : zoom <= 9 ? 100 : zoom <= 11 ? 60 : zoom <= 13 ? 40 : 25;
+
+      console.log(`Loading fast chargers at zoom ${zoom}, radius ${radiusKm}km`);
       const res = await axios.get(
-        `/chargers/fast?lat=${userLocation.lat}&lng=${userLocation.lng}`
+        `/chargers/fast?lat=${centerLat}&lng=${centerLng}&radius=${radiusKm}`
       );
+      console.log(`Loaded ${res.data.length} fast chargers`);
       setStations(res.data);
     } catch (err) { console.error(err); }
   };
 
   const loadAll = async () => {
-    if (!userLocation) return;
+    if (!mapRef.current) return;
     try {
+      const map = mapRef.current;
+      const bounds = map.getBounds();
+      const centerLat = (bounds.getNorth() + bounds.getSouth()) / 2;
+      const centerLng = (bounds.getEast() + bounds.getWest()) / 2;
+      const zoom = map.getZoom();
+
+      // Use same radius calculation as MapUpdater
+      const radiusKm = zoom <= 5 ? 250 : zoom <= 7 ? 200 : zoom <= 9 ? 100 : zoom <= 11 ? 60 : zoom <= 13 ? 40 : 25;
+
+      console.log(`Loading all chargers at zoom ${zoom}, radius ${radiusKm}km`);
       const res = await axios.get(
-        `/chargers?lat=${userLocation.lat}&lng=${userLocation.lng}&radius=50`
+        `/chargers?lat=${centerLat}&lng=${centerLng}&radius=${radiusKm}`
       );
+      console.log(`Loaded ${res.data.length} chargers`);
       setStations(res.data);
     } catch (err) { console.error(err); }
   };
@@ -442,7 +490,7 @@ export default function MapView() {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        <MapUpdater userLocation={userLocation} setStations={setStations} />
+        <MapUpdater userLocation={userLocation} setStations={setStations} mapRef={mapRef} />
         <LocateMe userLocation={userLocation} setStations={setStations} isMobile={isMobile} />
         <ZoomControl position={isMobile ? "bottomright" : "bottomleft"} />
 
