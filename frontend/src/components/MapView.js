@@ -340,7 +340,8 @@ export default function MapView() {
           style={{
             position: "absolute",
             top: `${controlsToggleTop}px`,
-            left: "10px",
+            left: "auto",
+            right: "10px",
             zIndex: 1001,
             padding: "6px 10px",
             borderRadius: "8px",
@@ -364,12 +365,12 @@ export default function MapView() {
         zIndex: 1000,
         position: "absolute",
         top: `${controlsPanelTop}px`,
-        left: "10px",
+        left: isMobile ? "auto" : "10px",
         right: "10px",
         backgroundColor: "rgba(255, 255, 255, 0.95)",
         borderRadius: "8px",
         boxShadow: "0 2px 6px rgba(0, 0, 0, 0.15)",
-        width: "calc(100vw - 20px)",
+        width: isMobile ? "min(360px, calc(100vw - 20px))" : "calc(100vw - 20px)",
       }}>
         <button onClick={loadFast} style={{
           padding: isMobile ? "7px 10px" : "8px 12px",
