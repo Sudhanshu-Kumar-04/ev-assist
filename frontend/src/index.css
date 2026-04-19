@@ -11,3 +11,17 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+@media (max-width: 768px) {
+  .leaflet-bottom.leaflet-left .leaflet-control-zoom {
+    margin-bottom: 110px;
+    margin-left: 10px;
+  }
+
+  .leaflet-control-zoom a {
+    width: 42px;
+    height: 42px;
+    line-height: 42px;
+    font-size: 24px;
+  }
+}

@@ -89,7 +89,7 @@ function getPowerLabel(station) {
   return "Standard";
 }
 
-function LocateMe({ userLocation, setStations }) {
+function LocateMe({ userLocation, setStations, isMobile }) {
   const map = useMap();
 
   const goToMyLocation = () => {
@@ -139,17 +139,17 @@ function LocateMe({ userLocation, setStations }) {
       title="Go to my location"
       style={{
         position: "absolute",
-        bottom: 30,
+        bottom: isMobile ? 112 : 30,
         right: 12,
-        zIndex: 1000,
-        width: 40,
-        height: 40,
+        zIndex: 1100,
+        width: isMobile ? 48 : 40,
+        height: isMobile ? 48 : 40,
         borderRadius: "50%",
         background: "#fff",
         border: "2px solid #e5e7eb",
         boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
         cursor: "pointer",
-        fontSize: 18,
+        fontSize: isMobile ? 20 : 18,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -442,7 +442,7 @@ export default function MapView() {
         />
 
         <MapUpdater userLocation={userLocation} setStations={setStations} />
-        <LocateMe userLocation={userLocation} setStations={setStations} />
+        <LocateMe userLocation={userLocation} setStations={setStations} isMobile={isMobile} />
         <ZoomControl position="bottomleft" />
 
         <Marker position={[userLocation.lat, userLocation.lng]} icon={userIcon}>
