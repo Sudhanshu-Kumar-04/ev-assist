@@ -13,9 +13,9 @@ code {
 }
 
 @media (max-width: 768px) {
-  .leaflet-bottom.leaflet-left .leaflet-control-zoom {
-    margin-bottom: 110px;
-    margin-left: 10px;
+  .leaflet-bottom.leaflet-right .leaflet-control-zoom {
+    margin-bottom: 70px;
+    margin-right: 10px;
   }
 
   .leaflet-control-zoom a {

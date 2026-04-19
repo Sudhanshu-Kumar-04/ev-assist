@@ -139,7 +139,7 @@ function LocateMe({ userLocation, setStations, isMobile }) {
       title="Go to my location"
       style={{
         position: "absolute",
-        bottom: isMobile ? 112 : 30,
+        bottom: isMobile ? 154 : 30,
         right: 12,
         zIndex: 1100,
         width: isMobile ? 48 : 40,
@@ -443,7 +443,7 @@ export default function MapView() {
 
         <MapUpdater userLocation={userLocation} setStations={setStations} />
         <LocateMe userLocation={userLocation} setStations={setStations} isMobile={isMobile} />
-        <ZoomControl position="bottomleft" />
+        <ZoomControl position={isMobile ? "bottomright" : "bottomleft"} />
 
         <Marker position={[userLocation.lat, userLocation.lng]} icon={userIcon}>
           <Popup>You are here</Popup>

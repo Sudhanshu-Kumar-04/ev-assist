@@ -5,7 +5,12 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false, 
     const [from, setFrom] = useState("");
     const [to, setTo] = useState("");
     const [loading, setLoading] = useState(false);
+    const [isOpen, setIsOpen] = useState(!isMobile);
     const plannerRef = useRef(null);
+
+    useEffect(() => {
+        setIsOpen(!isMobile);
+    }, [isMobile]);
 
     useEffect(() => {
         if (!onHeightChange || !plannerRef.current) return;
@@ -96,14 +101,8 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false, 
         }
     };
 
-    return (
-        <div ref={plannerRef} style={{
-            position: "absolute",
-            top: isMobile ? "58px" : "10px",
-            left: isMobile ? "10px" : "50%",
-            right: isMobile ? "10px" : "auto",
-            transform: isMobile ? "none" : "translateX(-50%)",
-            zIndex: 1200,
+    const panelContent = (
+        <div style={{
             background: "rgba(255,255,255,0.96)",
             padding: isMobile ? "6px" : "10px",
             borderRadius: "10px",
@@ -160,6 +159,57 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false, 
             >
                 {loading ? "Finding..." : "Find Route"}
             </button>
+        </div>
+    );
+
+    if (isMobile) {
+        return (
+            <div
+                ref={plannerRef}
+                style={{
+                    position: "absolute",
+                    top: "58px",
+                    left: "10px",
+                    zIndex: 1200,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px",
+                }}
+            >
+                <button
+                    onClick={() => setIsOpen((prev) => !prev)}
+                    style={{
+                        padding: "7px 11px",
+                        borderRadius: "8px",
+                        border: "1px solid #d1d5db",
+                        background: "rgba(255,255,255,0.95)",
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        color: "#1f2937",
+                        cursor: "pointer",
+                        alignSelf: "flex-start",
+                    }}
+                >
+                    {isOpen ? "Hide Route" : "Route Planner"}
+                </button>
+                {isOpen ? panelContent : null}
+            </div>
+        );
+    }
+
+    return (
+        <div
+            ref={plannerRef}
+            style={{
+                position: "absolute",
+                top: "10px",
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 1200,
+            }}
+        >
+            {panelContent}
         </div>
     );
 }
