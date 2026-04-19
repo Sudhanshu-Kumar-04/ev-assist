@@ -1,10 +1,30 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 
-export default function RoutePlanner({ setStations, setRoute, isMobile = false }) {
+export default function RoutePlanner({ setStations, setRoute, isMobile = false, onHeightChange }) {
     const [from, setFrom] = useState("");
     const [to, setTo] = useState("");
     const [loading, setLoading] = useState(false);
+    const plannerRef = useRef(null);
+
+    useEffect(() => {
+        if (!onHeightChange || !plannerRef.current) return;
+
+        const updateHeight = () => {
+            onHeightChange(plannerRef.current?.offsetHeight || 0);
+        };
+
+        updateHeight();
+
+        if (typeof ResizeObserver !== "undefined") {
+            const observer = new ResizeObserver(updateHeight);
+            observer.observe(plannerRef.current);
+            return () => observer.disconnect();
+        }
+
+        window.addEventListener("resize", updateHeight);
+        return () => window.removeEventListener("resize", updateHeight);
+    }, [onHeightChange, isMobile]);
 
     const getRoute = async () => {
         setLoading(true);
@@ -77,7 +97,7 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false }
     };
 
     return (
-        <div style={{
+        <div ref={plannerRef} style={{
             position: "absolute",
             top: isMobile ? "58px" : "10px",
             left: isMobile ? "10px" : "50%",

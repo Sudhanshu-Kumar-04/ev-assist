@@ -164,6 +164,7 @@ export default function MapView() {
   const DEFAULT_LOCATION = { lat: 28.6139, lng: 77.2090 };
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [showMobileControls, setShowMobileControls] = useState(false);
+  const [routePanelHeight, setRoutePanelHeight] = useState(104);
   const [userLocation, setUserLocation] = useState(null);
   const [stations, setStations] = useState([]);
   const [route, setRoute] = useState([]);
@@ -327,6 +328,10 @@ export default function MapView() {
 
   if (!userLocation) return <p>Loading map...</p>;
 
+  const routePanelTop = isMobile ? 58 : 10;
+  const controlsToggleTop = isMobile ? routePanelTop + routePanelHeight + 8 : 10;
+  const controlsPanelTop = isMobile ? controlsToggleTop + 36 : 10;
+
   return (
     <>
       {isMobile && (
@@ -334,7 +339,7 @@ export default function MapView() {
           onClick={() => setShowMobileControls((prev) => !prev)}
           style={{
             position: "absolute",
-            top: "118px",
+            top: `${controlsToggleTop}px`,
             left: "10px",
             zIndex: 1001,
             padding: "6px 10px",
@@ -358,7 +363,7 @@ export default function MapView() {
         gap: "8px",
         zIndex: 1000,
         position: "absolute",
-        top: isMobile ? "154px" : "10px",
+        top: `${controlsPanelTop}px`,
         left: "10px",
         right: "10px",
         backgroundColor: "rgba(255, 255, 255, 0.95)",
@@ -419,7 +424,12 @@ export default function MapView() {
           }}>📅 My Bookings</button>
         )}
       </div>
-      <RoutePlanner setStations={setStations} setRoute={setRoute} isMobile={isMobile} />
+      <RoutePlanner
+        setStations={setStations}
+        setRoute={setRoute}
+        isMobile={isMobile}
+        onHeightChange={setRoutePanelHeight}
+      />
       <MapContainer
         center={[userLocation.lat, userLocation.lng]}
         zoom={10}
