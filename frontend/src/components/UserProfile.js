@@ -19,7 +19,37 @@ export default function UserProfile({ onClose }) {
 
   const headers = { Authorization: `Bearer ${token}` };
 
+  const validateProfile = () => {
+    const name = String(form.name || "").trim();
+    const batteryRaw = form.battery_capacity_kwh;
+    const rangeRaw = form.range_km;
+
+    if (!name) return "Full name is required";
+
+    if (batteryRaw !== "") {
+      const battery = Number(batteryRaw);
+      if (Number.isNaN(battery) || battery <= 0) {
+        return "Battery capacity must be a positive number";
+      }
+    }
+
+    if (rangeRaw !== "") {
+      const range = Number(rangeRaw);
+      if (Number.isNaN(range) || range <= 0) {
+        return "Range must be a positive number";
+      }
+    }
+
+    return null;
+  };
+
   const saveProfile = async () => {
+    const validationError = validateProfile();
+    if (validationError) {
+      setMessage({ text: validationError, type: "error" });
+      return;
+    }
+
     setLoading(true);
     setMessage({ text: "", type: "" });
     try {
@@ -103,7 +133,10 @@ export default function UserProfile({ onClose }) {
               <div style={s.field}>
                 <label style={s.label}>Full Name</label>
                 <input style={s.input} value={form.name}
-                  onChange={e => setForm({ ...form, name: e.target.value })} />
+                  onChange={e => {
+                    setForm({ ...form, name: e.target.value });
+                    if (message.text) setMessage({ text: "", type: "" });
+                  }} />
               </div>
               <div style={s.field}>
                 <label style={s.label}>Email</label>
@@ -117,20 +150,29 @@ export default function UserProfile({ onClose }) {
                 <label style={s.label}>Vehicle Model</label>
                 <input style={s.input} placeholder="e.g. Tata Nexon EV, MG ZS EV"
                   value={form.vehicle_model}
-                  onChange={e => setForm({ ...form, vehicle_model: e.target.value })} />
+                  onChange={e => {
+                    setForm({ ...form, vehicle_model: e.target.value });
+                    if (message.text) setMessage({ text: "", type: "" });
+                  }} />
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div style={s.field}>
                   <label style={s.label}>Battery Capacity (kWh)</label>
-                  <input style={s.input} type="number" placeholder="e.g. 30.2"
+                  <input style={s.input} type="number" min="0" step="0.1" placeholder="e.g. 30.2"
                     value={form.battery_capacity_kwh}
-                    onChange={e => setForm({ ...form, battery_capacity_kwh: e.target.value })} />
+                    onChange={e => {
+                      setForm({ ...form, battery_capacity_kwh: e.target.value });
+                      if (message.text) setMessage({ text: "", type: "" });
+                    }} />
                 </div>
                 <div style={s.field}>
                   <label style={s.label}>Range (km)</label>
-                  <input style={s.input} type="number" placeholder="e.g. 312"
+                  <input style={s.input} type="number" min="0" step="1" placeholder="e.g. 312"
                     value={form.range_km}
-                    onChange={e => setForm({ ...form, range_km: e.target.value })} />
+                    onChange={e => {
+                      setForm({ ...form, range_km: e.target.value });
+                      if (message.text) setMessage({ text: "", type: "" });
+                    }} />
                 </div>
               </div>
 
