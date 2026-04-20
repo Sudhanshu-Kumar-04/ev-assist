@@ -5,22 +5,71 @@ const jwt = require("jsonwebtoken");
 const { pool } = require("../db");
 
 const JWT_SECRET = process.env.JWT_SECRET;
-const SALT_ROUNDS = 10;
+const SALT_ROUNDS = 12;
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
   .split(",")
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const authAttemptStore = new Map();
+
+function authRateLimit(action, maxAttempts, windowMs) {
+  return (req, res, next) => {
+    const emailPart = String(req.body?.email || "").trim().toLowerCase();
+    const key = `${action}:${req.ip}:${emailPart}`;
+    const now = Date.now();
+    const existing = authAttemptStore.get(key);
+
+    if (!existing || now > existing.resetAt) {
+      authAttemptStore.set(key, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+
+    if (existing.count >= maxAttempts) {
+      const retryAfterSec = Math.ceil((existing.resetAt - now) / 1000);
+      res.set("Retry-After", String(retryAfterSec));
+      return res.status(429).json({ error: `Too many attempts. Try again in ${retryAfterSec}s` });
+    }
+
+    existing.count += 1;
+    authAttemptStore.set(key, existing);
+    next();
+  };
+}
+
+function validatePassword(password) {
+  const value = String(password || "");
+  if (value.length < 8) return "Password must be at least 8 characters";
+  if (!/[A-Z]/.test(value)) return "Password must include at least one uppercase letter";
+  if (!/[a-z]/.test(value)) return "Password must include at least one lowercase letter";
+  if (!/[0-9]/.test(value)) return "Password must include at least one number";
+  if (!/[^A-Za-z0-9]/.test(value)) return "Password must include at least one special character";
+  return null;
+}
+
 // ── Register ──────────────────────────────────────────────
-router.post("/register", async (req, res) => {
+router.post("/register", authRateLimit("register", 6, 15 * 60 * 1000), async (req, res) => {
   const { name, email, password, vehicle_model, battery_capacity_kwh, range_km } = req.body;
 
   if (!name || !email || !password)
     return res.status(400).json({ error: "Name, email and password are required" });
 
   try {
+    const normalizedName = String(name).trim();
     const normalizedEmail = String(email).trim().toLowerCase();
-    const existing = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
+    if (!normalizedName || normalizedName.length < 2) {
+      return res.status(400).json({ error: "Name must be at least 2 characters" });
+    }
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      return res.status(400).json({ error: "Please provide a valid email" });
+    }
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      return res.status(400).json({ error: passwordError });
+    }
+
+    const existing = await pool.query("SELECT id FROM users WHERE email = $1", [normalizedEmail]);
     if (existing.rows.length > 0)
       return res.status(409).json({ error: "Email already registered" });
 
@@ -42,7 +91,19 @@ router.post("/register", async (req, res) => {
     const result = await pool.query(
       `INSERT INTO users (name, email, password_hash, role, vehicle_model, battery_capacity_kwh, range_km)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, email, role`,
-      [name, email, password_hash, role, vehicle_model || null, battery_capacity_kwh || null, range_km || null]
+      [
+        normalizedName,
+        normalizedEmail,
+        password_hash,
+        role,
+        String(vehicle_model || "").trim() || null,
+        battery_capacity_kwh === "" || battery_capacity_kwh === undefined || battery_capacity_kwh === null
+          ? null
+          : Number(battery_capacity_kwh),
+        range_km === "" || range_km === undefined || range_km === null
+          ? null
+          : Number(range_km),
+      ]
     );
 
     const user = result.rows[0];
@@ -68,14 +129,19 @@ router.post("/register", async (req, res) => {
 });
 
 // ── Login ─────────────────────────────────────────────────
-router.post("/login", async (req, res) => {
+router.post("/login", authRateLimit("login", 10, 15 * 60 * 1000), async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password)
     return res.status(400).json({ error: "Email and password are required" });
 
   try {
-    const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+    const normalizedEmail = String(email).trim().toLowerCase();
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      return res.status(400).json({ error: "Please provide a valid email" });
+    }
+
+    const result = await pool.query("SELECT * FROM users WHERE email = $1", [normalizedEmail]);
     if (result.rows.length === 0)
       return res.status(401).json({ error: "Invalid email or password" });
 
@@ -165,8 +231,11 @@ router.put("/change-password", authenticate, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
   if (!currentPassword || !newPassword)
     return res.status(400).json({ error: "Both passwords required" });
-  if (newPassword.length < 6)
-    return res.status(400).json({ error: "New password must be at least 6 characters" });
+
+  const passwordError = validatePassword(newPassword);
+  if (passwordError) {
+    return res.status(400).json({ error: passwordError });
+  }
 
   try {
     const result = await pool.query("SELECT * FROM users WHERE id = $1", [req.userId]);
