@@ -367,9 +367,21 @@ export default function MapView() {
     const seen = new Set();
     return filteredStations.filter((station) => {
       const hasCoords = Number.isFinite(Number(station.latitude)) && Number.isFinite(Number(station.longitude));
-      const key = station.ocm_id
-        ? `ocm-${station.ocm_id}`
-        : `${String(station.name || "").trim().toLowerCase()}|${hasCoords ? Number(station.latitude).toFixed(4) : "na"}|${hasCoords ? Number(station.longitude).toFixed(4) : "na"}`;
+      const normalizeText = (value) => String(value || "")
+        .toLowerCase()
+        .replace(/charging station|ev station|station|charger/g, "")
+        .replace(/[^a-z0-9 ]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      const normalizedName = normalizeText(station.name) || normalizeText(station.address) || "unknown";
+      const latKey = hasCoords ? Number(station.latitude).toFixed(3) : "na";
+      const lngKey = hasCoords ? Number(station.longitude).toFixed(3) : "na";
+      const key = hasCoords
+        ? `${normalizedName}|${latKey}|${lngKey}`
+        : station.ocm_id
+          ? `ocm-${station.ocm_id}`
+          : `${normalizedName}|${normalizeText(station.town)}|${normalizeText(station.state)}`;
 
       if (seen.has(key)) return false;
       seen.add(key);
@@ -685,7 +697,7 @@ export default function MapView() {
         style={{
           position: "absolute",
           right: 10,
-          bottom: isMobile ? "calc(env(safe-area-inset-bottom, 0px) + 66px)" : 66,
+          top: isMobile ? `${controlsToggleTop + 40}px` : `${controlsPanelTop + 8}px`,
           zIndex: 1120,
           border: "1px solid #d1d5db",
           borderRadius: 999,
