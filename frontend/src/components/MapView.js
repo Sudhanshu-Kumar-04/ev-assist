@@ -294,26 +294,6 @@ export default function MapView() {
     }
   };
 
-  const loadFast = async () => {
-    if (!userLocation) return;
-    try {
-      const res = await axios.get(
-        `/chargers/fast?lat=${userLocation.lat}&lng=${userLocation.lng}&radius=50`
-      );
-      setStations(res.data);
-    } catch (err) { console.error(err); }
-  };
-
-  const loadAll = async () => {
-    if (!userLocation) return;
-    try {
-      const res = await axios.get(
-        `/chargers?lat=${userLocation.lat}&lng=${userLocation.lng}&radius=50`
-      );
-      setStations(res.data);
-    } catch (err) { console.error(err); }
-  };
-
   // Add this function in MapView:
   const loadFavorites = async () => {
     if (!user) { alert("Please sign in to view favorites"); return; }
@@ -435,30 +415,6 @@ export default function MapView() {
         boxShadow: "0 2px 6px rgba(0, 0, 0, 0.15)",
         width: isMobile ? "min(360px, calc(100vw - 20px))" : "calc(100vw - 20px)",
       }}>
-        <button onClick={loadFast} style={{
-          padding: isMobile ? "7px 10px" : "8px 12px",
-          fontSize: isMobile ? "12px" : "14px",
-          borderRadius: "6px",
-          border: "1px solid #ddd",
-          background: "#fff",
-          cursor: "pointer",
-          fontWeight: 500,
-          whiteSpace: "nowrap",
-          minWidth: isMobile ? "unset" : "120px",
-          width: isMobile ? "calc(50% - 4px)" : "auto",
-        }}>⚡ Fast Chargers</button>
-        <button onClick={loadAll} style={{
-          padding: isMobile ? "7px 10px" : "8px 12px",
-          fontSize: isMobile ? "12px" : "14px",
-          borderRadius: "6px",
-          border: "1px solid #ddd",
-          background: "#fff",
-          cursor: "pointer",
-          fontWeight: 500,
-          whiteSpace: "nowrap",
-          minWidth: isMobile ? "unset" : "120px",
-          width: isMobile ? "calc(50% - 4px)" : "auto",
-        }}>🔄 All Chargers</button>
         {user && (
           <button onClick={() => setShowFavorites(true)} style={{
             padding: isMobile ? "7px 10px" : "8px 12px",
