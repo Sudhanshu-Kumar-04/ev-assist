@@ -169,7 +169,7 @@ export default function MapView() {
   const [plugFilter, setPlugFilter] = useState("any");
   const [minRating, setMinRating] = useState("any");
   const [openNowOnly, setOpenNowOnly] = useState(false);
-  const [showNearbyPanel, setShowNearbyPanel] = useState(true);
+  const [showNearbyPanel, setShowNearbyPanel] = useState(window.innerWidth > 768);
   const mapRef = useRef(null);
 
   useEffect(() => {
