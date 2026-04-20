@@ -698,7 +698,7 @@ export default function MapView() {
           position: "absolute",
           left: 10,
           right: "auto",
-          top: isMobile ? `${controlsPanelTop + 8}px` : "10px",
+          top: isMobile ? "calc(env(safe-area-inset-top, 0px) + 10px)" : "10px",
           zIndex: 1120,
           border: "1px solid #d1d5db",
           borderRadius: 999,
