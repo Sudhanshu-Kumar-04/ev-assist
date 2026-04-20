@@ -271,13 +271,18 @@ export default function MapView() {
     iconAnchor: [12, 41],
   });
 
-  const chargerIcon = new L.Icon({
-    iconUrl:
-      "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
-    shadowUrl:
-      "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
+  const chargerIcon = L.divIcon({
+    className: "",
+    html: `
+      <svg width="32" height="44" viewBox="0 0 32 44" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M16 43C16 43 2 29 2 16C2 8.3 8.3 2 16 2C23.7 2 30 8.3 30 16C30 29 16 43 16 43Z" fill="#718096"/>
+        <circle cx="16" cy="16" r="11" fill="#e45747"/>
+        <path d="M17.8 8.8L12.2 17.2H16.1L14.4 23.2L19.8 14.8H15.9L17.8 8.8Z" fill="#111827"/>
+      </svg>
+    `,
+    iconSize: [32, 44],
+    iconAnchor: [16, 43],
+    popupAnchor: [0, -36],
   });
 
   // route is rendered via <Polyline /> below; no direct map instance required here
