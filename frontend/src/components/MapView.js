@@ -169,6 +169,7 @@ export default function MapView() {
   const [plugFilter, setPlugFilter] = useState("any");
   const [minRating, setMinRating] = useState("any");
   const [openNowOnly, setOpenNowOnly] = useState(false);
+  const [showNearbyPanel, setShowNearbyPanel] = useState(true);
   const mapRef = useRef(null);
 
   useEffect(() => {
@@ -362,6 +363,20 @@ export default function MapView() {
     return sorted;
   }, [stations, openNowOnly, plugFilter, minRating, sortBy]);
 
+  const uniqueStations = useMemo(() => {
+    const seen = new Set();
+    return filteredStations.filter((station) => {
+      const hasCoords = Number.isFinite(Number(station.latitude)) && Number.isFinite(Number(station.longitude));
+      const key = station.ocm_id
+        ? `ocm-${station.ocm_id}`
+        : `${String(station.name || "").trim().toLowerCase()}|${hasCoords ? Number(station.latitude).toFixed(4) : "na"}|${hasCoords ? Number(station.longitude).toFixed(4) : "na"}`;
+
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [filteredStations]);
+
   if (!userLocation) return <p>Loading map...</p>;
 
   const routePanelTop = isMobile ? 58 : 10;
@@ -529,7 +544,7 @@ export default function MapView() {
           Open now
         </label>
         <div style={{ width: "100%", fontSize: 12, color: "#4b5563", fontWeight: 600 }}>
-          Nearby chargers shown: {filteredStations.length} (within 50km of you)
+          Nearby chargers shown: {uniqueStations.length} (within 50km of you)
         </div>
       </div>
       <RoutePlanner
@@ -559,7 +574,7 @@ export default function MapView() {
         {route.length > 0 && (
           <Polyline positions={route} pathOptions={{ color: "blue", weight: 5 }} />
         )}
-        {filteredStations.map((station) => (
+        {uniqueStations.map((station) => (
           <Marker
             key={station.id}
             position={[Number(station.latitude), Number(station.longitude)]}
@@ -665,54 +680,77 @@ export default function MapView() {
         ))}
       </MapContainer>
 
-      <div style={{
-        position: "absolute",
-        left: isMobile ? 10 : "auto",
-        right: 10,
-        bottom: isMobile ? "calc(env(safe-area-inset-bottom, 0px) + 8px)" : 12,
-        width: isMobile ? "calc(100vw - 20px)" : "min(460px, 42vw)",
-        maxHeight: isMobile ? "42vh" : "52vh",
-        overflowY: "auto",
-        zIndex: 1050,
-        background: "rgba(255,255,255,0.96)",
-        border: "1px solid #e5e7eb",
-        borderRadius: 14,
-        boxShadow: "0 10px 26px rgba(0,0,0,0.16)",
-        padding: 12,
-        backdropFilter: "blur(2px)",
-      }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <div style={{ fontWeight: 800, fontSize: isMobile ? 18 : 16 }}>Nearby EV charging stations</div>
-          <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 600 }}>{filteredStations.length} results</div>
-        </div>
+      <button
+        onClick={() => setShowNearbyPanel((prev) => !prev)}
+        style={{
+          position: "absolute",
+          right: 10,
+          bottom: isMobile ? "calc(env(safe-area-inset-bottom, 0px) + 66px)" : 66,
+          zIndex: 1120,
+          border: "1px solid #d1d5db",
+          borderRadius: 999,
+          background: "#fff",
+          boxShadow: "0 4px 10px rgba(0,0,0,0.16)",
+          padding: isMobile ? "8px 12px" : "7px 11px",
+          fontSize: isMobile ? 12 : 11,
+          fontWeight: 700,
+          color: "#111827",
+          cursor: "pointer",
+        }}
+      >
+        {showNearbyPanel ? "Hide Nearby List" : "Show Nearby List"}
+      </button>
 
-        {filteredStations.length === 0 ? (
-          <div style={{ fontSize: 13, color: "#6b7280", padding: "10px 4px" }}>
-            No chargers match your filters within 50km.
+      {showNearbyPanel && (
+        <div style={{
+          position: "absolute",
+          left: isMobile ? 10 : "auto",
+          right: 10,
+          bottom: isMobile ? "calc(env(safe-area-inset-bottom, 0px) + 8px)" : 12,
+          width: isMobile ? "calc(100vw - 20px)" : "min(460px, 42vw)",
+          maxHeight: isMobile ? "42vh" : "52vh",
+          overflowY: "auto",
+          zIndex: 1050,
+          background: "rgba(255,255,255,0.96)",
+          border: "1px solid #e5e7eb",
+          borderRadius: 14,
+          boxShadow: "0 10px 26px rgba(0,0,0,0.16)",
+          padding: 12,
+          backdropFilter: "blur(2px)",
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div style={{ fontWeight: 800, fontSize: isMobile ? 18 : 16 }}>Nearby EV charging stations</div>
+            <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 600 }}>{uniqueStations.length} results</div>
           </div>
-        ) : (
-          filteredStations.slice(0, 20).map((station) => (
-            <div key={`card-${station.id}`} style={{
-              border: "1px solid #e5e7eb",
-              borderRadius: 10,
-              padding: 10,
-              marginBottom: 8,
-              background: "#fff",
-            }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 4 }}>{station.name}</div>
-              <div style={{ fontSize: 13, color: "#4b5563", marginBottom: 6 }}>
-                {(station.town || station.state) ? `${station.town || ""}${station.town && station.state ? ", " : ""}${station.state || ""}` : (station.address || "Address unavailable")}
-              </div>
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12, color: "#1f2937", fontWeight: 600 }}>
-                <span>⭐ {station.rating ? Number(station.rating).toFixed(1) : "N/A"}{station.review_count ? ` (${station.review_count})` : ""}</span>
-                <span>📏 {station.distance_km ? `${Number(station.distance_km).toFixed(1)} km` : "-"}</span>
-                <span>⚡ {getPowerLabel(station)}</span>
-                <span>{station.is_operational === true ? "🟢 Open now" : station.is_operational === false ? "🔴 Closed/Unknown" : "⚪ Status N/A"}</span>
-              </div>
+
+          {uniqueStations.length === 0 ? (
+            <div style={{ fontSize: 13, color: "#6b7280", padding: "10px 4px" }}>
+              No chargers match your filters within 50km.
             </div>
-          ))
-        )}
-      </div>
+          ) : (
+            uniqueStations.slice(0, 20).map((station) => (
+              <div key={`card-${station.id}`} style={{
+                border: "1px solid #e5e7eb",
+                borderRadius: 10,
+                padding: 10,
+                marginBottom: 8,
+                background: "#fff",
+              }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 4 }}>{station.name}</div>
+                <div style={{ fontSize: 13, color: "#4b5563", marginBottom: 6 }}>
+                  {(station.town || station.state) ? `${station.town || ""}${station.town && station.state ? ", " : ""}${station.state || ""}` : (station.address || "Address unavailable")}
+                </div>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12, color: "#1f2937", fontWeight: 600 }}>
+                  <span>⭐ {station.rating ? Number(station.rating).toFixed(1) : "N/A"}{station.review_count ? ` (${station.review_count})` : ""}</span>
+                  <span>📏 {station.distance_km ? `${Number(station.distance_km).toFixed(1)} km` : "-"}</span>
+                  <span>⚡ {getPowerLabel(station)}</span>
+                  <span>{station.is_operational === true ? "🟢 Open now" : station.is_operational === false ? "🔴 Closed/Unknown" : "⚪ Status N/A"}</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
       {reservingStation && (
         <ReservationModal station={reservingStation} onClose={() => setReservingStation(null)} />
       )}
