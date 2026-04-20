@@ -15,8 +15,11 @@ export default function UserProfile({ onClose }) {
     currentPassword: "", newPassword: "", confirmPassword: ""
   });
   const [loading, setLoading] = useState(false);
+  const [securityLoading, setSecurityLoading] = useState(false);
   const [message, setMessage] = useState({ text: "", type: "" });
   const [fieldErrors, setFieldErrors] = useState({});
+  const [twoFaSetup, setTwoFaSetup] = useState(null);
+  const [twoFaCode, setTwoFaCode] = useState("");
 
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -98,6 +101,61 @@ export default function UserProfile({ onClose }) {
     }
   };
 
+  const startTwoFactorSetup = async () => {
+    setSecurityLoading(true);
+    setMessage({ text: "", type: "" });
+    try {
+      const res = await axios.post("/auth/2fa/setup", {}, { headers });
+      setTwoFaSetup(res.data);
+      setMessage({ text: "Scan QR and enter your app code to enable 2FA", type: "success" });
+    } catch (err) {
+      setMessage({ text: err.response?.data?.error || "Failed to start 2FA setup", type: "error" });
+    } finally {
+      setSecurityLoading(false);
+    }
+  };
+
+  const verifyTwoFactorSetup = async () => {
+    if (!twoFaCode || twoFaCode.trim().length < 6) {
+      setMessage({ text: "Enter a valid 2FA code", type: "error" });
+      return;
+    }
+
+    setSecurityLoading(true);
+    setMessage({ text: "", type: "" });
+    try {
+      await axios.post("/auth/2fa/verify-setup", { code: twoFaCode.trim() }, { headers });
+      login(token, { ...user, two_factor_enabled: true });
+      setTwoFaSetup(null);
+      setTwoFaCode("");
+      setMessage({ text: "2FA enabled successfully ✓", type: "success" });
+    } catch (err) {
+      setMessage({ text: err.response?.data?.error || "Failed to verify 2FA setup", type: "error" });
+    } finally {
+      setSecurityLoading(false);
+    }
+  };
+
+  const disableTwoFactor = async () => {
+    if (!twoFaCode || twoFaCode.trim().length < 6) {
+      setMessage({ text: "Enter your 2FA code to disable", type: "error" });
+      return;
+    }
+
+    setSecurityLoading(true);
+    setMessage({ text: "", type: "" });
+    try {
+      await axios.post("/auth/2fa/disable", { code: twoFaCode.trim() }, { headers });
+      login(token, { ...user, two_factor_enabled: false });
+      setTwoFaCode("");
+      setMessage({ text: "2FA disabled successfully", type: "success" });
+    } catch (err) {
+      setMessage({ text: err.response?.data?.error || "Failed to disable 2FA", type: "error" });
+    } finally {
+      setSecurityLoading(false);
+    }
+  };
+
   // EV stats derived from profile
   const batteryKwh = parseFloat(form.battery_capacity_kwh) || 0;
   const rangeKm = parseFloat(form.range_km) || 0;
@@ -120,10 +178,10 @@ export default function UserProfile({ onClose }) {
 
         {/* Tabs */}
         <div style={s.tabs}>
-          {["profile", "password"].map(t => (
+          {["profile", "password", "security"].map(t => (
             <button key={t} style={{ ...s.tab, ...(tab === t ? s.tabActive : {}) }}
               onClick={() => { setTab(t); setMessage({ text: "", type: "" }); }}>
-              {t === "profile" ? "👤 Profile & Vehicle" : "🔒 Change Password"}
+              {t === "profile" ? "👤 Profile & Vehicle" : t === "password" ? "🔒 Change Password" : "🛡️ Security"}
             </button>
           ))}
         </div>
@@ -260,6 +318,74 @@ export default function UserProfile({ onClose }) {
               </button>
             </>
           )}
+
+          {tab === "security" && (
+            <>
+              <p style={s.sectionTitle}>Account Security</p>
+              <div style={s.securityCard}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>
+                  Two-Factor Authentication (TOTP)
+                </div>
+                <div style={{ fontSize: 13, color: "#4b5563", marginTop: 4 }}>
+                  Status: {user?.two_factor_enabled ? "Enabled" : "Disabled"}
+                </div>
+
+                {!user?.two_factor_enabled && !twoFaSetup ? (
+                  <button style={s.btn} onClick={startTwoFactorSetup} disabled={securityLoading}>
+                    {securityLoading ? "Preparing..." : "Enable 2FA"}
+                  </button>
+                ) : null}
+
+                {twoFaSetup ? (
+                  <div style={{ marginTop: 10 }}>
+                    {twoFaSetup.qrCodeDataUrl ? (
+                      <img
+                        src={twoFaSetup.qrCodeDataUrl}
+                        alt="2FA QR"
+                        style={{ width: 170, height: 170, border: "1px solid #e5e7eb", borderRadius: 8 }}
+                      />
+                    ) : null}
+                    <p style={{ fontSize: 12, color: "#374151", margin: "8px 0 4px" }}>
+                      Manual key: <b>{twoFaSetup.manualEntryKey}</b>
+                    </p>
+                    <input
+                      style={s.input}
+                      placeholder="Enter 6-digit authenticator code"
+                      value={twoFaCode}
+                      onChange={(e) => setTwoFaCode(e.target.value)}
+                    />
+                    <button style={s.btn} onClick={verifyTwoFactorSetup} disabled={securityLoading}>
+                      {securityLoading ? "Verifying..." : "Verify & Enable"}
+                    </button>
+                  </div>
+                ) : null}
+
+                {user?.two_factor_enabled ? (
+                  <div style={{ marginTop: 10 }}>
+                    <input
+                      style={s.input}
+                      placeholder="Enter current 2FA code to disable"
+                      value={twoFaCode}
+                      onChange={(e) => setTwoFaCode(e.target.value)}
+                    />
+                    <button
+                      style={{ ...s.btn, background: "#dc2626" }}
+                      onClick={disableTwoFactor}
+                      disabled={securityLoading}
+                    >
+                      {securityLoading ? "Processing..." : "Disable 2FA"}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+
+              {message.text && (
+                <p style={{ ...s.msg, color: message.type === "success" ? "#059669" : "#dc2626" }}>
+                  {message.text}
+                </p>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -286,6 +412,7 @@ const s = {
   fieldErrorText: { marginTop: 2, color: "#dc2626", fontSize: 12, fontWeight: 500 },
   statsCard: { background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 10, padding: 14 },
   statsTitle: { margin: "0 0 10px", fontSize: 12, fontWeight: 700, color: "#0369a1" },
+  securityCard: { border: "1px solid #e5e7eb", borderRadius: 10, padding: 12, background: "#f9fafb" },
   statsGrid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 },
   statItem: { display: "flex", flexDirection: "column", alignItems: "center", gap: 2 },
   statValue: { fontSize: 18, fontWeight: 700, color: "#0369a1" },

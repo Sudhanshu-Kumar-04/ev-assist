@@ -30,10 +30,23 @@ const initDB = async () => {
         vehicle_model VARCHAR(100),
         battery_capacity_kwh DECIMAL,
         range_km DECIMAL,
+        email_verified BOOLEAN DEFAULT false,
+        email_verification_otp_hash TEXT,
+        email_verification_otp_expires_at TIMESTAMP,
+        two_factor_enabled BOOLEAN DEFAULT false,
+        two_factor_secret TEXT,
+        two_factor_temp_secret TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
     console.log("✅ users table ready");
+
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_otp_hash TEXT`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_otp_expires_at TIMESTAMP`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_enabled BOOLEAN DEFAULT false`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_secret TEXT`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_temp_secret TEXT`);
 
     // 2. Chargers table
     await pool.query(`
@@ -113,6 +126,19 @@ const initDB = async () => {
       )
     `);
     console.log("✅ reservations table ready");
+
+    // 5. Password reset tokens
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        used_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log("✅ password_reset_tokens table ready");
 
     console.log("✅ All database tables initialized");
   } catch (err) {
