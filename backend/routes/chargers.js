@@ -102,13 +102,26 @@ router.get("/sync-india", async (req, res) => {
         const websiteUrl = item.AddressInfo?.RelatedURL || item.OperatorInfo?.WebsiteURL || null;
         const imageUrl = item.MediaItems?.find((m) => m?.ItemURL)?.ItemURL || null;
         const usageCost = item.UsageCost || null;
+        const statusText = item.StatusType?.Title || null;
+        const isOperational = typeof item.StatusType?.IsOperational === "boolean"
+          ? item.StatusType.IsOperational
+          : null;
+        const userRatings = (item.UserComments || [])
+          .map((c) => Number(c?.Rating))
+          .filter((r) => Number.isFinite(r) && r >= 0 && r <= 5);
+        const reviewCount = userRatings.length;
+        const rating = reviewCount
+          ? Number((userRatings.reduce((sum, r) => sum + r, 0) / reviewCount).toFixed(1))
+          : null;
 
         try {
           const r = await pool.query(`
             INSERT INTO chargers
               (ocm_id, name, address, town, state, power_kw, connection_type, current_type, quantity,
-               operator_name, contact_phone, website_url, image_url, usage_cost, location)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, ST_SetSRID(ST_MakePoint($15,$16),4326))
+               operator_name, contact_phone, website_url, image_url, usage_cost, rating, review_count,
+               status_text, is_operational, location)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
+              ST_SetSRID(ST_MakePoint($19,$20),4326))
             ON CONFLICT (ocm_id) DO UPDATE SET
               name = EXCLUDED.name,
               address = EXCLUDED.address,
@@ -122,9 +135,14 @@ router.get("/sync-india", async (req, res) => {
               contact_phone = EXCLUDED.contact_phone,
               website_url = EXCLUDED.website_url,
               image_url = EXCLUDED.image_url,
-              usage_cost = EXCLUDED.usage_cost
+              usage_cost = EXCLUDED.usage_cost,
+              rating = EXCLUDED.rating,
+              review_count = EXCLUDED.review_count,
+              status_text = EXCLUDED.status_text,
+              is_operational = EXCLUDED.is_operational
           `, [ocmId, title, address, town, state, power, connectionType, currentType, quantity,
-            operatorName, contactPhone, websiteUrl, imageUrl, usageCost, longitude, latitude]);
+            operatorName, contactPhone, websiteUrl, imageUrl, usageCost, rating, reviewCount,
+            statusText, isOperational, longitude, latitude]);
           if (r.rowCount > 0) totalInserted++;
         } catch (e) {
           console.warn(`OCM upsert failed (id=${ocmId || "null"}, title=${title || "unknown"}): ${e.message}`);
@@ -199,13 +217,26 @@ router.get("/sync", async (req, res) => {
       const websiteUrl = item.AddressInfo?.RelatedURL || item.OperatorInfo?.WebsiteURL || null;
       const imageUrl = item.MediaItems?.find((m) => m?.ItemURL)?.ItemURL || null;
       const usageCost = item.UsageCost || null;
+      const statusText = item.StatusType?.Title || null;
+      const isOperational = typeof item.StatusType?.IsOperational === "boolean"
+        ? item.StatusType.IsOperational
+        : null;
+      const userRatings = (item.UserComments || [])
+        .map((c) => Number(c?.Rating))
+        .filter((r) => Number.isFinite(r) && r >= 0 && r <= 5);
+      const reviewCount = userRatings.length;
+      const rating = reviewCount
+        ? Number((userRatings.reduce((sum, r) => sum + r, 0) / reviewCount).toFixed(1))
+        : null;
 
       try {
         const r = await pool.query(`
           INSERT INTO chargers
             (ocm_id, name, address, town, state, power_kw, connection_type, current_type, quantity,
-             operator_name, contact_phone, website_url, image_url, usage_cost, location)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, ST_SetSRID(ST_MakePoint($15,$16), 4326))
+             operator_name, contact_phone, website_url, image_url, usage_cost, rating, review_count,
+             status_text, is_operational, location)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
+            ST_SetSRID(ST_MakePoint($19,$20), 4326))
           ON CONFLICT (ocm_id) DO UPDATE SET
             name            = EXCLUDED.name,
             address         = EXCLUDED.address,
@@ -219,9 +250,14 @@ router.get("/sync", async (req, res) => {
             contact_phone   = EXCLUDED.contact_phone,
             website_url     = EXCLUDED.website_url,
             image_url       = EXCLUDED.image_url,
-            usage_cost      = EXCLUDED.usage_cost
+            usage_cost      = EXCLUDED.usage_cost,
+            rating          = EXCLUDED.rating,
+            review_count    = EXCLUDED.review_count,
+            status_text     = EXCLUDED.status_text,
+            is_operational  = EXCLUDED.is_operational
         `, [ocmId, title, address, town, state, power, connectionType, currentType, quantity,
-          operatorName, contactPhone, websiteUrl, imageUrl, usageCost, longitude, latitude]);
+          operatorName, contactPhone, websiteUrl, imageUrl, usageCost, rating, reviewCount,
+          statusText, isOperational, longitude, latitude]);
         if (r.rowCount > 0) inserted++;
       } catch (e) {
         console.warn(`OCM upsert failed (id=${ocmId || "null"}, title=${title || "unknown"}): ${e.message}`);
@@ -261,6 +297,7 @@ router.get("/", async (req, res) => {
           id, ocm_id, name, address, town, state,
           power_kw, connection_type, current_type, quantity,
           operator_name, contact_phone, website_url, image_url, usage_cost,
+          rating, review_count, status_text, is_operational,
           ST_Y(location::geometry) AS latitude,
           ST_X(location::geometry) AS longitude,
           ST_Distance(
@@ -340,7 +377,13 @@ router.get("/fast", async (req, res) => {
     let result;
     if (lat && lng) {
       result = await pool.query(`
-        SELECT *, ST_Y(location::geometry) AS latitude, ST_X(location::geometry) AS longitude
+        SELECT *,
+               ST_Y(location::geometry) AS latitude,
+               ST_X(location::geometry) AS longitude,
+               ST_Distance(
+                 location::geography,
+                 ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
+               ) / 1000 AS distance_km
         FROM chargers
         WHERE power_kw >= 50
         AND ST_DWithin(
@@ -348,6 +391,7 @@ router.get("/fast", async (req, res) => {
           ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
           $3 * 1000
         )
+        ORDER BY distance_km ASC
       `, [lat, lng, radius]);
     } else {
       result = await pool.query(`

@@ -1,5 +1,5 @@
 import RoutePlanner from "./RoutePlanner.js";
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, ZoomControl } from "react-leaflet";
 import L from "leaflet";
 import axios from "axios";
@@ -20,7 +20,7 @@ L.Icon.Default.mergeOptions({
     "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
 });
 
-// MapUpdater - fetches chargers based on visible map viewport
+// MapUpdater - always fetches chargers within 50km of user location
 function MapUpdater({ userLocation, setStations, mapRef }) {
   const map = useMap();
 
@@ -28,35 +28,12 @@ function MapUpdater({ userLocation, setStations, mapRef }) {
     mapRef.current = map;
   }, [map, mapRef]);
 
-  const fetchByBounds = async () => {
+  const fetchNearby = async () => {
     try {
-      // Ensure map has valid bounds
-      if (!map.getBounds()) return;
-
-      const bounds = map.getBounds();
-      const north = bounds.getNorth();
-      const south = bounds.getSouth();
-      const east = bounds.getEast();
-      const west = bounds.getWest();
-      const zoom = map.getZoom();
-
-      const centerLat = (north + south) / 2;
-      const centerLng = (east + west) / 2;
-
-      // Calculate radius based on zoom level to match visible area
-      // Lower zoom = larger area, higher zoom = smaller radius
-      const radiusKm = zoom <= 5 ? 250 :   // Very zoomed out - 250km
-        zoom <= 7 ? 200 :                   // Zoomed out - 200km
-          zoom <= 9 ? 100 :                 // Regional view - 100km
-            zoom <= 11 ? 60 :               // City level - 60km
-              zoom <= 13 ? 40 : 25;         // Street level - 25km
-
-      console.log(`Fetching chargers at zoom ${zoom}, radius ${radiusKm}km, center (${centerLat.toFixed(4)}, ${centerLng.toFixed(4)})`);
-
+      if (!userLocation?.lat || !userLocation?.lng) return;
       const res = await axios.get(
-        `/chargers?lat=${centerLat}&lng=${centerLng}&radius=${radiusKm}`
+        `/chargers?lat=${userLocation.lat}&lng=${userLocation.lng}&radius=50`
       );
-      console.log(`Loaded ${res.data.length} chargers`);
       setStations(res.data);
     } catch (err) {
       console.error("Fetch error:", err);
@@ -65,27 +42,11 @@ function MapUpdater({ userLocation, setStations, mapRef }) {
 
   useEffect(() => {
     if (!userLocation) return;
-
-    // Wait for map to be fully loaded before first fetch
-    const handleMapReady = () => {
-      setTimeout(fetchByBounds, 200);
-    };
-
-    if (map.isLoading?.()) {
-      map.once("load", handleMapReady);
-    } else {
-      // Map already loaded
-      handleMapReady();
-    }
-
-    // Fetch on move and zoom
-    map.on("moveend", fetchByBounds);
-    map.on("zoomend", fetchByBounds);
+    fetchNearby();
 
     return () => {
-      map.off("load", handleMapReady);
-      map.off("moveend", fetchByBounds);
-      map.off("zoomend", fetchByBounds);
+      map.off("moveend", fetchNearby);
+      map.off("zoomend", fetchNearby);
     };
   }, [map, userLocation]);
 
@@ -114,7 +75,7 @@ function getPowerLabel(station) {
   return "Standard";
 }
 
-function LocateMe({ userLocation, setStations, isMobile }) {
+function LocateMe({ userLocation, setUserLocation, setStations, isMobile }) {
   const map = useMap();
 
   const goToMyLocation = () => {
@@ -127,6 +88,7 @@ function LocateMe({ userLocation, setStations, isMobile }) {
         (position) => {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
+          setUserLocation({ lat, lng });
           map.flyTo([lat, lng], 13, {
             animate: true,
             duration: 1.5,
@@ -136,11 +98,12 @@ function LocateMe({ userLocation, setStations, isMobile }) {
             .catch(console.error);
         },
         () => {
+          setUserLocation(fallback);
           map.flyTo([fallback.lat, fallback.lng], 11, {
             animate: true,
             duration: 1.2,
           });
-          axios.get(`/chargers?lat=${fallback.lat}&lng=${fallback.lng}&radius=80`)
+          axios.get(`/chargers?lat=${fallback.lat}&lng=${fallback.lng}&radius=50`)
             .then((res) => setStations(res.data))
             .catch(console.error);
         },
@@ -149,11 +112,12 @@ function LocateMe({ userLocation, setStations, isMobile }) {
       return;
     }
 
+    setUserLocation(fallback);
     map.flyTo([fallback.lat, fallback.lng], 11, {
       animate: true,
       duration: 1.2,
     });
-    axios.get(`/chargers?lat=${fallback.lat}&lng=${fallback.lng}&radius=80`)
+    axios.get(`/chargers?lat=${fallback.lat}&lng=${fallback.lng}&radius=50`)
       .then((res) => setStations(res.data))
       .catch(console.error);
   };
@@ -201,6 +165,10 @@ export default function MapView() {
   const [waitLoading, setWaitLoading] = useState({});
   const [favoriteIds, setFavoriteIds] = useState(new Set());
   const [showFavorites, setShowFavorites] = useState(false);
+  const [sortBy, setSortBy] = useState("distance");
+  const [plugFilter, setPlugFilter] = useState("any");
+  const [minRating, setMinRating] = useState("any");
+  const [openNowOnly, setOpenNowOnly] = useState(false);
   const mapRef = useRef(null);
 
   useEffect(() => {
@@ -326,43 +294,21 @@ export default function MapView() {
   };
 
   const loadFast = async () => {
-    if (!mapRef.current) return;
+    if (!userLocation) return;
     try {
-      const map = mapRef.current;
-      const bounds = map.getBounds();
-      const centerLat = (bounds.getNorth() + bounds.getSouth()) / 2;
-      const centerLng = (bounds.getEast() + bounds.getWest()) / 2;
-      const zoom = map.getZoom();
-
-      // Use same radius calculation as MapUpdater
-      const radiusKm = zoom <= 5 ? 250 : zoom <= 7 ? 200 : zoom <= 9 ? 100 : zoom <= 11 ? 60 : zoom <= 13 ? 40 : 25;
-
-      console.log(`Loading fast chargers at zoom ${zoom}, radius ${radiusKm}km`);
       const res = await axios.get(
-        `/chargers/fast?lat=${centerLat}&lng=${centerLng}&radius=${radiusKm}`
+        `/chargers/fast?lat=${userLocation.lat}&lng=${userLocation.lng}&radius=50`
       );
-      console.log(`Loaded ${res.data.length} fast chargers`);
       setStations(res.data);
     } catch (err) { console.error(err); }
   };
 
   const loadAll = async () => {
-    if (!mapRef.current) return;
+    if (!userLocation) return;
     try {
-      const map = mapRef.current;
-      const bounds = map.getBounds();
-      const centerLat = (bounds.getNorth() + bounds.getSouth()) / 2;
-      const centerLng = (bounds.getEast() + bounds.getWest()) / 2;
-      const zoom = map.getZoom();
-
-      // Use same radius calculation as MapUpdater
-      const radiusKm = zoom <= 5 ? 250 : zoom <= 7 ? 200 : zoom <= 9 ? 100 : zoom <= 11 ? 60 : zoom <= 13 ? 40 : 25;
-
-      console.log(`Loading all chargers at zoom ${zoom}, radius ${radiusKm}km`);
       const res = await axios.get(
-        `/chargers?lat=${centerLat}&lng=${centerLng}&radius=${radiusKm}`
+        `/chargers?lat=${userLocation.lat}&lng=${userLocation.lng}&radius=50`
       );
-      console.log(`Loaded ${res.data.length} chargers`);
       setStations(res.data);
     } catch (err) { console.error(err); }
   };
@@ -378,6 +324,43 @@ export default function MapView() {
       if (res.data.length === 0) alert("No favorites yet! Click ⭐ on any charger to save it.");
     } catch (err) { console.error(err); }
   };
+
+  const filteredStations = useMemo(() => {
+    let list = stations.filter((s) => s.latitude && s.longitude);
+
+    if (openNowOnly) {
+      list = list.filter((s) => s.is_operational === true);
+    }
+
+    if (plugFilter === "dc") {
+      list = list.filter((s) => {
+        const current = String(s.current_type || "").toLowerCase();
+        return current.includes("dc") || Number(s.power_kw) >= 50;
+      });
+    } else if (plugFilter === "ac") {
+      list = list.filter((s) => {
+        const current = String(s.current_type || "").toLowerCase();
+        return current.includes("ac") || (Number(s.power_kw) > 0 && Number(s.power_kw) < 50);
+      });
+    } else if (plugFilter === "fast") {
+      list = list.filter((s) => Number(s.power_kw) >= 50);
+    }
+
+    if (minRating !== "any") {
+      const threshold = Number(minRating);
+      list = list.filter((s) => Number(s.rating || 0) >= threshold);
+    }
+
+    const sorted = [...list];
+    if (sortBy === "rating") {
+      sorted.sort((a, b) => Number(b.rating || -1) - Number(a.rating || -1));
+    } else if (sortBy === "power") {
+      sorted.sort((a, b) => Number(b.power_kw || 0) - Number(a.power_kw || 0));
+    } else {
+      sorted.sort((a, b) => Number(a.distance_km || Number.MAX_VALUE) - Number(b.distance_km || Number.MAX_VALUE));
+    }
+    return sorted;
+  }, [stations, openNowOnly, plugFilter, minRating, sortBy]);
 
   if (!userLocation) return <p>Loading map...</p>;
 
@@ -477,6 +460,77 @@ export default function MapView() {
             width: isMobile ? "calc(50% - 4px)" : "auto",
           }}>📅 My Bookings</button>
         )}
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value)}
+          style={{
+            padding: isMobile ? "7px 10px" : "8px 12px",
+            fontSize: isMobile ? "12px" : "14px",
+            borderRadius: "6px",
+            border: "1px solid #ddd",
+            background: "#fff",
+            minWidth: isMobile ? "calc(50% - 4px)" : "150px",
+          }}
+        >
+          <option value="distance">Sort: Nearest</option>
+          <option value="rating">Sort: Top Rated</option>
+          <option value="power">Sort: High Power</option>
+        </select>
+        <select
+          value={plugFilter}
+          onChange={(e) => setPlugFilter(e.target.value)}
+          style={{
+            padding: isMobile ? "7px 10px" : "8px 12px",
+            fontSize: isMobile ? "12px" : "14px",
+            borderRadius: "6px",
+            border: "1px solid #ddd",
+            background: "#fff",
+            minWidth: isMobile ? "calc(50% - 4px)" : "150px",
+          }}
+        >
+          <option value="any">Any plugs</option>
+          <option value="dc">DC</option>
+          <option value="ac">AC</option>
+          <option value="fast">Fast (50kW+)</option>
+        </select>
+        <select
+          value={minRating}
+          onChange={(e) => setMinRating(e.target.value)}
+          style={{
+            padding: isMobile ? "7px 10px" : "8px 12px",
+            fontSize: isMobile ? "12px" : "14px",
+            borderRadius: "6px",
+            border: "1px solid #ddd",
+            background: "#fff",
+            minWidth: isMobile ? "calc(50% - 4px)" : "150px",
+          }}
+        >
+          <option value="any">Any rating</option>
+          <option value="4">4.0+</option>
+          <option value="4.5">4.5+</option>
+        </select>
+        <label style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          fontSize: isMobile ? 12 : 14,
+          fontWeight: 500,
+          background: "#fff",
+          border: "1px solid #ddd",
+          borderRadius: 6,
+          padding: isMobile ? "7px 10px" : "8px 12px",
+          minWidth: isMobile ? "calc(50% - 4px)" : "130px",
+        }}>
+          <input
+            type="checkbox"
+            checked={openNowOnly}
+            onChange={(e) => setOpenNowOnly(e.target.checked)}
+          />
+          Open now
+        </label>
+        <div style={{ width: "100%", fontSize: 12, color: "#4b5563", fontWeight: 600 }}>
+          Nearby chargers shown: {filteredStations.length} (within 50km of you)
+        </div>
       </div>
       <RoutePlanner
         setStations={setStations}
@@ -496,7 +550,7 @@ export default function MapView() {
         />
 
         <MapUpdater userLocation={userLocation} setStations={setStations} mapRef={mapRef} />
-        <LocateMe userLocation={userLocation} setStations={setStations} isMobile={isMobile} />
+        <LocateMe userLocation={userLocation} setUserLocation={setUserLocation} setStations={setStations} isMobile={isMobile} />
         <ZoomControl position={isMobile ? "bottomright" : "bottomleft"} />
 
         <Marker position={[userLocation.lat, userLocation.lng]} icon={userIcon}>
@@ -505,106 +559,160 @@ export default function MapView() {
         {route.length > 0 && (
           <Polyline positions={route} pathOptions={{ color: "blue", weight: 5 }} />
         )}
-        {stations
-          .filter((s) => s.latitude && s.longitude)
-          .map((station) => (
-            <Marker
-              key={station.id}
-              position={[Number(station.latitude), Number(station.longitude)]}
-              icon={chargerIcon}
-              eventHandlers={{ click: () => estimateWait(station) }}
-            >
-              <Popup>
-                <div style={{ minWidth: 200 }}>
-                  {station.image_url ? (
-                    <img
-                      src={station.image_url}
-                      alt={station.name}
-                      style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 8, marginBottom: 8 }}
-                    />
-                  ) : null}
-                  <b style={{ fontSize: 14 }}>{station.name}</b>
-                  <br /><br />
-                  {station.operator_name ? <>🏢 Operator: {station.operator_name}<br /></> : null}
-                  {(station.town || station.state) ? <>📍 {station.town || ""}{station.town && station.state ? ", " : ""}{station.state || ""}<br /></> : null}
-                  ⚡ Power: <b>{getPowerLabel(station)}</b><br />
-                  🔌 Type: {getConnectionLabel(station)}<br />
-                  ⚙️ Current: {getCurrentLabel(station)}<br />
-                  🔢 Ports: {station.quantity || 1}<br />
-                  {station.usage_cost ? <>💳 Cost: {station.usage_cost}<br /></> : null}
-                  {station.contact_phone ? <>📞 {station.contact_phone}<br /></> : null}
-                  {station.website_url ? (
-                    <>
-                      🌐 <a href={station.website_url} target="_blank" rel="noreferrer">Website</a><br />
-                    </>
-                  ) : null}
+        {filteredStations.map((station) => (
+          <Marker
+            key={station.id}
+            position={[Number(station.latitude), Number(station.longitude)]}
+            icon={chargerIcon}
+            eventHandlers={{ click: () => estimateWait(station) }}
+          >
+            <Popup>
+              <div style={{ minWidth: 200 }}>
+                {station.image_url ? (
+                  <img
+                    src={station.image_url}
+                    alt={station.name}
+                    style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 8, marginBottom: 8 }}
+                  />
+                ) : null}
+                <b style={{ fontSize: 14 }}>{station.name}</b>
+                <br /><br />
+                {station.operator_name ? <>🏢 Operator: {station.operator_name}<br /></> : null}
+                {(station.town || station.state) ? <>📍 {station.town || ""}{station.town && station.state ? ", " : ""}{station.state || ""}<br /></> : null}
+                {station.distance_km ? <>📏 Distance: <b>{Number(station.distance_km).toFixed(1)} km</b><br /></> : null}
+                {station.rating ? <>⭐ Rating: <b>{Number(station.rating).toFixed(1)}</b>{station.review_count ? ` (${station.review_count})` : ""}<br /></> : <>⭐ Rating: N/A<br /></>}
+                {typeof station.is_operational === "boolean" ? (
+                  <>🟢 Status: <b>{station.is_operational ? "Open now" : "May be closed"}</b><br /></>
+                ) : station.status_text ? (
+                  <>🟢 Status: <b>{station.status_text}</b><br /></>
+                ) : null}
+                ⚡ Power: <b>{getPowerLabel(station)}</b><br />
+                🔌 Type: {getConnectionLabel(station)}<br />
+                ⚙️ Current: {getCurrentLabel(station)}<br />
+                🔢 Ports: {station.quantity || 1}<br />
+                {station.usage_cost ? <>💳 Cost: {station.usage_cost}<br /></> : null}
+                {station.contact_phone ? <>📞 {station.contact_phone}<br /></> : null}
+                {station.website_url ? (
+                  <>
+                    🌐 <a href={station.website_url} target="_blank" rel="noreferrer">Website</a><br />
+                  </>
+                ) : null}
 
-                  {waitLoading[station.id] ? (
-                    <div style={{ fontSize: 11, color: "#6b7280", margin: "6px 0" }}>
-                      🕐 Estimating...
-                    </div>
-                  ) : waitTimes[station.id] ? (
-                    <div style={{
-                      margin: "8px 0",
-                      display: "inline-block",
-                      padding: "3px 10px",
-                      borderRadius: 20,
-                      fontSize: 11,
-                      fontWeight: 600,
-                      background:
-                        waitTimes[station.id].color === "green" ? "#d1fae5" :
-                          waitTimes[station.id].color === "yellow" ? "#fef9c3" :
-                            waitTimes[station.id].color === "orange" ? "#ffedd5" : "#fee2e2",
-                      color:
-                        waitTimes[station.id].color === "green" ? "#065f46" :
-                          waitTimes[station.id].color === "yellow" ? "#713f12" :
-                            waitTimes[station.id].color === "orange" ? "#7c2d12" : "#991b1b",
-                    }}>
-                      🕐 {waitTimes[station.id].label}
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: 11, color: "#9ca3af", margin: "6px 0" }}>
-                      🕐 Click marker to estimate wait
-                    </div>
-                  )}
-
-                  <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                    <button
-                      onClick={() => toggleFavorite(station)}
-                      style={{
-                        padding: "4px 8px", fontSize: 12, borderRadius: 6, cursor: "pointer",
-                        border: favoriteIds.has(station.id) ? "1px solid #fca5a5" : "1px solid #ddd",
-                        background: favoriteIds.has(station.id) ? "#fee2e2" : "#fff",
-                        color: favoriteIds.has(station.id) ? "#dc2626" : "#374151",
-                        fontWeight: favoriteIds.has(station.id) ? 600 : 400,
-                      }}
-                    >
-                      {favoriteIds.has(station.id) ? "💔 Remove" : "⭐ Favorite"}
-                    </button>
-                    {user ? (
-                      <>
-                        <button
-                          onClick={() => setReservingStation(station)}
-                          style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "none", background: "#2563eb", color: "#fff", cursor: "pointer", fontWeight: 600 }}
-                        >
-                          📅 Reserve
-                        </button>
-                        <button
-                          onClick={() => setEstimatingStation(station)}
-                          style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "none", background: "#059669", color: "#fff", cursor: "pointer", fontWeight: 600 }}
-                        >
-                          💰 Cost
-                        </button>
-                      </>
-                    ) : (
-                      <span style={{ fontSize: 11, color: "#9ca3af", alignSelf: "center" }}>Sign in to reserve</span>
-                    )}
+                {waitLoading[station.id] ? (
+                  <div style={{ fontSize: 11, color: "#6b7280", margin: "6px 0" }}>
+                    🕐 Estimating...
                   </div>
+                ) : waitTimes[station.id] ? (
+                  <div style={{
+                    margin: "8px 0",
+                    display: "inline-block",
+                    padding: "3px 10px",
+                    borderRadius: 20,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    background:
+                      waitTimes[station.id].color === "green" ? "#d1fae5" :
+                        waitTimes[station.id].color === "yellow" ? "#fef9c3" :
+                          waitTimes[station.id].color === "orange" ? "#ffedd5" : "#fee2e2",
+                    color:
+                      waitTimes[station.id].color === "green" ? "#065f46" :
+                        waitTimes[station.id].color === "yellow" ? "#713f12" :
+                          waitTimes[station.id].color === "orange" ? "#7c2d12" : "#991b1b",
+                  }}>
+                    🕐 {waitTimes[station.id].label}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 11, color: "#9ca3af", margin: "6px 0" }}>
+                    🕐 Click marker to estimate wait
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                  <button
+                    onClick={() => toggleFavorite(station)}
+                    style={{
+                      padding: "4px 8px", fontSize: 12, borderRadius: 6, cursor: "pointer",
+                      border: favoriteIds.has(station.id) ? "1px solid #fca5a5" : "1px solid #ddd",
+                      background: favoriteIds.has(station.id) ? "#fee2e2" : "#fff",
+                      color: favoriteIds.has(station.id) ? "#dc2626" : "#374151",
+                      fontWeight: favoriteIds.has(station.id) ? 600 : 400,
+                    }}
+                  >
+                    {favoriteIds.has(station.id) ? "💔 Remove" : "⭐ Favorite"}
+                  </button>
+                  {user ? (
+                    <>
+                      <button
+                        onClick={() => setReservingStation(station)}
+                        style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "none", background: "#2563eb", color: "#fff", cursor: "pointer", fontWeight: 600 }}
+                      >
+                        📅 Reserve
+                      </button>
+                      <button
+                        onClick={() => setEstimatingStation(station)}
+                        style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "none", background: "#059669", color: "#fff", cursor: "pointer", fontWeight: 600 }}
+                      >
+                        💰 Cost
+                      </button>
+                    </>
+                  ) : (
+                    <span style={{ fontSize: 11, color: "#9ca3af", alignSelf: "center" }}>Sign in to reserve</span>
+                  )}
                 </div>
-              </Popup>
-            </Marker>
-          ))}
+              </div>
+            </Popup>
+          </Marker>
+        ))}
       </MapContainer>
+
+      <div style={{
+        position: "absolute",
+        left: isMobile ? 10 : "auto",
+        right: 10,
+        bottom: isMobile ? "calc(env(safe-area-inset-bottom, 0px) + 8px)" : 12,
+        width: isMobile ? "calc(100vw - 20px)" : "min(460px, 42vw)",
+        maxHeight: isMobile ? "42vh" : "52vh",
+        overflowY: "auto",
+        zIndex: 1050,
+        background: "rgba(255,255,255,0.96)",
+        border: "1px solid #e5e7eb",
+        borderRadius: 14,
+        boxShadow: "0 10px 26px rgba(0,0,0,0.16)",
+        padding: 12,
+        backdropFilter: "blur(2px)",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div style={{ fontWeight: 800, fontSize: isMobile ? 18 : 16 }}>Nearby EV charging stations</div>
+          <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 600 }}>{filteredStations.length} results</div>
+        </div>
+
+        {filteredStations.length === 0 ? (
+          <div style={{ fontSize: 13, color: "#6b7280", padding: "10px 4px" }}>
+            No chargers match your filters within 50km.
+          </div>
+        ) : (
+          filteredStations.slice(0, 20).map((station) => (
+            <div key={`card-${station.id}`} style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 10,
+              padding: 10,
+              marginBottom: 8,
+              background: "#fff",
+            }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 4 }}>{station.name}</div>
+              <div style={{ fontSize: 13, color: "#4b5563", marginBottom: 6 }}>
+                {(station.town || station.state) ? `${station.town || ""}${station.town && station.state ? ", " : ""}${station.state || ""}` : (station.address || "Address unavailable")}
+              </div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12, color: "#1f2937", fontWeight: 600 }}>
+                <span>⭐ {station.rating ? Number(station.rating).toFixed(1) : "N/A"}{station.review_count ? ` (${station.review_count})` : ""}</span>
+                <span>📏 {station.distance_km ? `${Number(station.distance_km).toFixed(1)} km` : "-"}</span>
+                <span>⚡ {getPowerLabel(station)}</span>
+                <span>{station.is_operational === true ? "🟢 Open now" : station.is_operational === false ? "🔴 Closed/Unknown" : "⚪ Status N/A"}</span>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
       {reservingStation && (
         <ReservationModal station={reservingStation} onClose={() => setReservingStation(null)} />
       )}

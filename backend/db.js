@@ -53,6 +53,10 @@ const initDB = async () => {
         website_url TEXT,
         image_url TEXT,
         usage_cost TEXT,
+        rating DECIMAL(2,1),
+        review_count INTEGER,
+        status_text VARCHAR(120),
+        is_operational BOOLEAN,
         location GEOGRAPHY(POINT, 4326)
       )
     `);
@@ -67,6 +71,10 @@ const initDB = async () => {
     await pool.query(`ALTER TABLE chargers ADD COLUMN IF NOT EXISTS website_url TEXT`);
     await pool.query(`ALTER TABLE chargers ADD COLUMN IF NOT EXISTS image_url TEXT`);
     await pool.query(`ALTER TABLE chargers ADD COLUMN IF NOT EXISTS usage_cost TEXT`);
+    await pool.query(`ALTER TABLE chargers ADD COLUMN IF NOT EXISTS rating DECIMAL(2,1)`);
+    await pool.query(`ALTER TABLE chargers ADD COLUMN IF NOT EXISTS review_count INTEGER`);
+    await pool.query(`ALTER TABLE chargers ADD COLUMN IF NOT EXISTS status_text VARCHAR(120)`);
+    await pool.query(`ALTER TABLE chargers ADD COLUMN IF NOT EXISTS is_operational BOOLEAN`);
 
     // Old dedupe collapsed different stations with similar names/addresses.
     // Use OCM ID as the stable unique identity instead.
