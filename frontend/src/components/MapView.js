@@ -170,7 +170,6 @@ export default function MapView() {
   const [minRating, setMinRating] = useState("any");
   const [openNowOnly, setOpenNowOnly] = useState(false);
   const [showNearbyPanel, setShowNearbyPanel] = useState(window.innerWidth > 768);
-  const [showRoutePlanner, setShowRoutePlanner] = useState(false);
   const mapRef = useRef(null);
 
   useEffect(() => {
@@ -517,32 +516,16 @@ export default function MapView() {
           />
           Open now
         </label>
-        <button onClick={() => setShowRoutePlanner(!showRoutePlanner)} style={{
-          padding: isMobile ? "7px 10px" : "8px 12px",
-          fontSize: isMobile ? "12px" : "13px",
-          borderRadius: "6px",
-          border: "1px solid #ddd",
-          background: "#fff",
-          cursor: "pointer",
-          fontWeight: 500,
-          whiteSpace: "nowrap",
-          flex: isMobile ? "1 1 calc(50% - 5px)" : "0 1 auto",
-          minWidth: 0,
-        }}>
-          🗺️ {showRoutePlanner ? "Hide" : "Find"} Route
-        </button>
         <div style={{ width: "100%", fontSize: 12, color: "#4b5563", fontWeight: 600, textAlign: "center" }}>
           Nearby chargers shown: {uniqueStations.length} (within 50km of you)
         </div>
       </div>
-      {showRoutePlanner && (
-        <RoutePlanner
-          setStations={setStations}
-          setRoute={setRoute}
-          isMobile={isMobile}
-          onHeightChange={setRoutePanelHeight}
-        />
-      )}
+      <RoutePlanner
+        setStations={setStations}
+        setRoute={setRoute}
+        isMobile={isMobile}
+        onHeightChange={setRoutePanelHeight}
+      />
       <MapContainer
         center={[userLocation.lat, userLocation.lng]}
         zoom={10}
