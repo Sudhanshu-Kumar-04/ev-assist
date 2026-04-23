@@ -152,7 +152,7 @@ function LocateMe({ userLocation, setUserLocation, setStations, isMobile }) {
 export default function MapView() {
   const DEFAULT_LOCATION = { lat: 28.6139, lng: 77.2090 };
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  const [showMobileControls, setShowMobileControls] = useState(false);
+  const [showControls, setShowControls] = useState(false);
   const [routePanelHeight, setRoutePanelHeight] = useState(104);
   const [userLocation, setUserLocation] = useState(null);
   const [stations, setStations] = useState([]);
@@ -374,36 +374,34 @@ export default function MapView() {
 
   const routePanelTop = isMobile ? 58 : 10;
   const controlsToggleTop = isMobile ? routePanelTop + routePanelHeight + 8 : 10;
-  const controlsPanelTop = isMobile ? controlsToggleTop + 36 : 10;
+  const controlsPanelTop = controlsToggleTop + 42;
 
   return (
     <>
-      {isMobile && (
-        <button
-          onClick={() => setShowMobileControls((prev) => !prev)}
-          style={{
-            position: "absolute",
-            top: `${controlsToggleTop}px`,
-            left: "auto",
-            right: "10px",
-            zIndex: 1001,
-            padding: "6px 10px",
-            borderRadius: "8px",
-            border: "1px solid #d1d5db",
-            background: "rgba(255,255,255,0.95)",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
-            fontSize: "12px",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          {showMobileControls ? "Hide Controls" : "Show Controls"}
-        </button>
-      )}
+      <button
+        onClick={() => setShowControls((prev) => !prev)}
+        style={{
+          position: "absolute",
+          top: `${controlsToggleTop}px`,
+          left: "auto",
+          right: "10px",
+          zIndex: 1001,
+          padding: "6px 10px",
+          borderRadius: "8px",
+          border: "1px solid #d1d5db",
+          background: "rgba(255,255,255,0.95)",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+          fontSize: "12px",
+          fontWeight: 600,
+          cursor: "pointer",
+        }}
+      >
+        {showControls ? "Hide Controls" : "Show Controls"}
+      </button>
 
       <div style={{
         padding: "12px",
-        display: !isMobile || showMobileControls ? "flex" : "none",
+        display: showControls ? "flex" : "none",
         flexWrap: "wrap",
         gap: "10px",
         zIndex: 1000,
