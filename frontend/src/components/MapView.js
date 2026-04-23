@@ -165,6 +165,7 @@ export default function MapView() {
   const [waitLoading, setWaitLoading] = useState({});
   const [favoriteIds, setFavoriteIds] = useState(new Set());
   const [showFavorites, setShowFavorites] = useState(false);
+  const [showRoutePlanner, setShowRoutePlanner] = useState(false);
   const [sortBy, setSortBy] = useState("distance");
   const [plugFilter, setPlugFilter] = useState("any");
   const [minRating, setMinRating] = useState("any");
@@ -372,7 +373,9 @@ export default function MapView() {
   if (!userLocation) return <p>Loading map...</p>;
 
   const routePanelTop = isMobile ? 58 : 10;
-  const controlsToggleTop = isMobile ? routePanelTop + routePanelHeight + 8 : 10;
+  const controlsToggleTop = isMobile
+    ? routePanelTop + (showRoutePlanner ? routePanelHeight + 8 : 0)
+    : 10;
   const controlsPanelTop = isMobile ? controlsToggleTop + 36 : 54;
 
   return (
@@ -514,12 +517,36 @@ export default function MapView() {
           Nearby chargers shown: {uniqueStations.length} (within 50km of you)
         </div>
       </div>
-      <RoutePlanner
-        setStations={setStations}
-        setRoute={setRoute}
-        isMobile={isMobile}
-        onHeightChange={setRoutePanelHeight}
-      />
+      <button
+        onClick={() => setShowRoutePlanner((prev) => !prev)}
+        style={{
+          position: "absolute",
+          top: isMobile ? `${routePanelTop}px` : "10px",
+          left: isMobile ? "auto" : "320px",
+          right: isMobile ? "10px" : "auto",
+          zIndex: 1121,
+          padding: isMobile ? "6px 10px" : "7px 11px",
+          borderRadius: 999,
+          border: "1px solid #d1d5db",
+          background: "rgba(255,255,255,0.95)",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+          fontSize: isMobile ? "12px" : "11px",
+          fontWeight: 700,
+          cursor: "pointer",
+          color: "#111827",
+        }}
+      >
+        {showRoutePlanner ? "Hide Route" : "Find Route"}
+      </button>
+
+      {showRoutePlanner && (
+        <RoutePlanner
+          setStations={setStations}
+          setRoute={setRoute}
+          isMobile={isMobile}
+          onHeightChange={setRoutePanelHeight}
+        />
+      )}
       <MapContainer
         center={[userLocation.lat, userLocation.lng]}
         zoom={10}
