@@ -401,46 +401,47 @@ export default function MapView() {
       )}
 
       <div style={{
-        padding: "10px",
+        padding: "12px",
         display: !isMobile || showMobileControls ? "flex" : "none",
         flexWrap: "wrap",
-        gap: "8px",
+        gap: "10px",
         zIndex: 1000,
         position: "absolute",
         top: `${controlsPanelTop}px`,
         left: isMobile ? "auto" : "10px",
-        right: "10px",
+        right: isMobile ? "10px" : "auto",
         backgroundColor: "rgba(255, 255, 255, 0.95)",
         borderRadius: "8px",
         boxShadow: "0 2px 6px rgba(0, 0, 0, 0.15)",
-        width: isMobile ? "min(360px, calc(100vw - 20px))" : "calc(100vw - 20px)",
+        width: isMobile ? "min(360px, calc(100vw - 20px))" : "max-content",
+        maxWidth: isMobile ? "100%" : "calc(100vw - 40px)",
       }}>
         {user && (
           <button onClick={() => setShowFavorites(true)} style={{
             padding: isMobile ? "7px 10px" : "8px 12px",
-            fontSize: isMobile ? "12px" : "14px",
+            fontSize: isMobile ? "12px" : "13px",
             borderRadius: "6px",
             border: "1px solid #ddd",
             background: "#fff",
             cursor: "pointer",
             fontWeight: 500,
             whiteSpace: "nowrap",
-            minWidth: isMobile ? "unset" : "110px",
-            width: isMobile ? "calc(50% - 4px)" : "auto",
+            flex: isMobile ? "1 1 calc(50% - 5px)" : "0 1 auto",
+            minWidth: 0,
           }}>⭐ Favorites</button>
         )}
         {user && (
           <button onClick={() => setShowMyReservations(true)} style={{
             padding: isMobile ? "7px 10px" : "8px 12px",
-            fontSize: isMobile ? "12px" : "14px",
+            fontSize: isMobile ? "12px" : "13px",
             borderRadius: "6px",
             border: "1px solid #ddd",
             background: "#fff",
             cursor: "pointer",
             fontWeight: 500,
             whiteSpace: "nowrap",
-            minWidth: isMobile ? "unset" : "110px",
-            width: isMobile ? "calc(50% - 4px)" : "auto",
+            flex: isMobile ? "1 1 calc(50% - 5px)" : "0 1 auto",
+            minWidth: 0,
           }}>📅 My Bookings</button>
         )}
         <select
@@ -448,11 +449,12 @@ export default function MapView() {
           onChange={(e) => setSortBy(e.target.value)}
           style={{
             padding: isMobile ? "7px 10px" : "8px 12px",
-            fontSize: isMobile ? "12px" : "14px",
+            fontSize: isMobile ? "12px" : "13px",
             borderRadius: "6px",
             border: "1px solid #ddd",
             background: "#fff",
-            minWidth: isMobile ? "calc(50% - 4px)" : "150px",
+            flex: isMobile ? "1 1 calc(50% - 5px)" : "0 1 auto",
+            minWidth: 0,
           }}
         >
           <option value="distance">Sort: Nearest</option>
@@ -464,11 +466,12 @@ export default function MapView() {
           onChange={(e) => setPlugFilter(e.target.value)}
           style={{
             padding: isMobile ? "7px 10px" : "8px 12px",
-            fontSize: isMobile ? "12px" : "14px",
+            fontSize: isMobile ? "12px" : "13px",
             borderRadius: "6px",
             border: "1px solid #ddd",
             background: "#fff",
-            minWidth: isMobile ? "calc(50% - 4px)" : "150px",
+            flex: isMobile ? "1 1 calc(50% - 5px)" : "0 1 auto",
+            minWidth: 0,
           }}
         >
           <option value="any">Any plugs</option>
@@ -481,11 +484,12 @@ export default function MapView() {
           onChange={(e) => setMinRating(e.target.value)}
           style={{
             padding: isMobile ? "7px 10px" : "8px 12px",
-            fontSize: isMobile ? "12px" : "14px",
+            fontSize: isMobile ? "12px" : "13px",
             borderRadius: "6px",
             border: "1px solid #ddd",
             background: "#fff",
-            minWidth: isMobile ? "calc(50% - 4px)" : "150px",
+            flex: isMobile ? "1 1 calc(50% - 5px)" : "0 1 auto",
+            minWidth: 0,
           }}
         >
           <option value="any">Any rating</option>
@@ -496,13 +500,14 @@ export default function MapView() {
           display: "flex",
           alignItems: "center",
           gap: 6,
-          fontSize: isMobile ? 12 : 14,
+          fontSize: isMobile ? 12 : 13,
           fontWeight: 500,
           background: "#fff",
           border: "1px solid #ddd",
           borderRadius: 6,
           padding: isMobile ? "7px 10px" : "8px 12px",
-          minWidth: isMobile ? "calc(50% - 4px)" : "130px",
+          flex: isMobile ? "1 1 calc(50% - 5px)" : "0 1 auto",
+          minWidth: 0,
         }}>
           <input
             type="checkbox"
@@ -511,7 +516,7 @@ export default function MapView() {
           />
           Open now
         </label>
-        <div style={{ width: "100%", fontSize: 12, color: "#4b5563", fontWeight: 600 }}>
+        <div style={{ width: "100%", fontSize: 12, color: "#4b5563", fontWeight: 600, textAlign: "center" }}>
           Nearby chargers shown: {uniqueStations.length} (within 50km of you)
         </div>
       </div>
