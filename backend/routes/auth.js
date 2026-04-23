@@ -614,7 +614,17 @@ router.post("/2fa/setup", authenticate, async (req, res) => {
         const secret = authenticator.generateSecret();
         const serviceName = process.env.TOTP_ISSUER || "EV Assist";
         const otpAuthUrl = authenticator.keyuri(user.email, serviceName, secret);
-        const qrCodeDataUrl = await QRCode.toDataURL(otpAuthUrl);
+        let qrCodeDataUrl = null;
+        try {
+            qrCodeDataUrl = await QRCode.toDataURL(otpAuthUrl, {
+                errorCorrectionLevel: "M",
+                margin: 1,
+                width: 220,
+            });
+        } catch (qrErr) {
+            // Do not fail setup if QR rendering fails; manual key still enables TOTP apps.
+            console.error("2FA QR generation error:", qrErr);
+        }
 
         await pool.query(
             `UPDATE users SET two_factor_temp_secret = $1 WHERE id = $2`,
@@ -626,6 +636,7 @@ router.post("/2fa/setup", authenticate, async (req, res) => {
             otpAuthUrl,
             qrCodeDataUrl,
             manualEntryKey: secret,
+            qrUnavailable: !qrCodeDataUrl,
         });
     } catch (err) {
         console.error("2FA setup error:", err);

@@ -107,7 +107,12 @@ export default function UserProfile({ onClose }) {
     try {
       const res = await axios.post("/auth/2fa/setup", {}, { headers });
       setTwoFaSetup(res.data);
-      setMessage({ text: "Scan QR and enter your app code to enable 2FA", type: "success" });
+      setMessage({
+        text: res.data?.qrUnavailable
+          ? "QR preview unavailable. Use the manual key below in your authenticator app, then enter code."
+          : "Scan QR and enter your app code to enable 2FA",
+        type: "success"
+      });
     } catch (err) {
       setMessage({ text: err.response?.data?.error || "Failed to start 2FA setup", type: "error" });
     } finally {
