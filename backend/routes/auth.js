@@ -4,14 +4,26 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
-const { authenticator } = require("otplib");
+const otpLib = require("otplib");
 const QRCode = require("qrcode");
 const { pool } = require("../db");
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const SALT_ROUNDS = 12;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-authenticator.options = { step: 30, window: 1 };
+
+// otplib API differs by version/build; normalize to one authenticator-like object.
+const authenticator = otpLib.authenticator
+    ? otpLib.authenticator
+    : {
+        generateSecret: () => otpLib.generateSecret(),
+        keyuri: (accountName, issuer, secret) => otpLib.generateURI({ accountName, issuer, secret }),
+        verify: ({ token, secret }) => otpLib.verify({ token, secret, step: 30, window: 1 }),
+    };
+
+if (authenticator.options) {
+    authenticator.options = { step: 30, window: 1 };
+}
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
     .split(",")
