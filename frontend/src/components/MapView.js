@@ -152,7 +152,7 @@ function LocateMe({ userLocation, setUserLocation, setStations, isMobile }) {
 export default function MapView() {
   const DEFAULT_LOCATION = { lat: 28.6139, lng: 77.2090 };
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  const [showMobileControls, setShowMobileControls] = useState(false);
+  const [showControlsPanel, setShowControlsPanel] = useState(false);
   const [routePanelHeight, setRoutePanelHeight] = useState(104);
   const [userLocation, setUserLocation] = useState(null);
   const [stations, setStations] = useState([]);
@@ -373,47 +373,46 @@ export default function MapView() {
 
   const routePanelTop = isMobile ? 58 : 10;
   const controlsToggleTop = isMobile ? routePanelTop + routePanelHeight + 8 : 10;
-  const controlsPanelTop = isMobile ? controlsToggleTop + 36 : 10;
+  const controlsPanelTop = isMobile ? controlsToggleTop + 36 : 54;
 
   return (
     <>
-      {isMobile && (
-        <button
-          onClick={() => setShowMobileControls((prev) => !prev)}
-          style={{
-            position: "absolute",
-            top: `${controlsToggleTop}px`,
-            left: "auto",
-            right: "10px",
-            zIndex: 1001,
-            padding: "6px 10px",
-            borderRadius: "8px",
-            border: "1px solid #d1d5db",
-            background: "rgba(255,255,255,0.95)",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
-            fontSize: "12px",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          {showMobileControls ? "Hide Controls" : "Show Controls"}
-        </button>
-      )}
+      <button
+        onClick={() => setShowControlsPanel((prev) => !prev)}
+        style={{
+          position: "absolute",
+          top: isMobile ? `${controlsToggleTop}px` : "10px",
+          left: isMobile ? "auto" : "168px",
+          right: isMobile ? "10px" : "auto",
+          zIndex: 1121,
+          padding: isMobile ? "6px 10px" : "7px 11px",
+          borderRadius: 999,
+          border: "1px solid #d1d5db",
+          background: "rgba(255,255,255,0.95)",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+          fontSize: isMobile ? "12px" : "11px",
+          fontWeight: 700,
+          cursor: "pointer",
+          color: "#111827",
+        }}
+      >
+        {showControlsPanel ? "Hide Controls" : "Show Controls"}
+      </button>
 
       <div style={{
         padding: "10px",
-        display: !isMobile || showMobileControls ? "flex" : "none",
+        display: showControlsPanel ? "flex" : "none",
         flexWrap: "wrap",
         gap: "8px",
         zIndex: 1000,
         position: "absolute",
         top: `${controlsPanelTop}px`,
         left: isMobile ? "auto" : "10px",
-        right: "10px",
+        right: isMobile ? "10px" : "auto",
         backgroundColor: "rgba(255, 255, 255, 0.95)",
         borderRadius: "8px",
         boxShadow: "0 2px 6px rgba(0, 0, 0, 0.15)",
-        width: isMobile ? "min(360px, calc(100vw - 20px))" : "calc(100vw - 20px)",
+        width: isMobile ? "min(360px, calc(100vw - 20px))" : "min(880px, calc(100vw - 20px))",
       }}>
         {user && (
           <button onClick={() => setShowFavorites(true)} style={{
