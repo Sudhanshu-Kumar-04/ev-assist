@@ -1,8 +1,12 @@
-import { render, screen } from '@testing-library/react';
-import App from './App';
+import { render, screen } from "@testing-library/react";
+import App from "./App";
 
-test('renders learn react link', () => {
+jest.mock("./components/MapView", () => function MockMapView() {
+  return <div>Map placeholder</div>;
+});
+
+test("renders sign in button", () => {
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+  const button = screen.getByRole("button", { name: /sign in/i });
+  expect(button).toBeInTheDocument();
 });

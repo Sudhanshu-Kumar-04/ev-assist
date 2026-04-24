@@ -3,6 +3,7 @@ const router = express.Router();
 const { pool } = require("../db");
 const axios = require("axios");
 const authenticate = require("../middleware/auth");
+const adminAuth = require("../middleware/adminAuth");
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:5002";
 const ML_FALLBACK_URL = process.env.ML_FALLBACK_URL || "";
 const fetch = (...args) =>
@@ -10,6 +11,29 @@ const fetch = (...args) =>
   import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
 const mlTargets = [ML_SERVICE_URL, ML_FALLBACK_URL].filter(Boolean);
+const syncRateState = new Map();
+
+function syncRateLimit(req, res, next) {
+  const now = Date.now();
+  const windowMs = 10 * 60 * 1000;
+  const key = String(req.userId || req.ip || "anonymous");
+  const current = syncRateState.get(key);
+
+  if (current && now < current.resetAt && current.count >= 1) {
+    const retryAfterSec = Math.ceil((current.resetAt - now) / 1000);
+    res.set("Retry-After", String(retryAfterSec));
+    return res.status(429).json({
+      error: `Sync recently triggered. Try again in ${retryAfterSec}s`,
+    });
+  }
+
+  syncRateState.set(key, {
+    count: current && now < current.resetAt ? current.count + 1 : 1,
+    resetAt: current && now < current.resetAt ? current.resetAt : now + windowMs,
+  });
+
+  return next();
+}
 
 async function callMlService(path, payload) {
   let lastError = null;
@@ -38,7 +62,7 @@ async function callMlService(path, payload) {
 }
 
 // Sync chargers from OpenChargeMap into DB
-router.get("/sync-india", async (req, res) => {
+router.get("/sync-india", adminAuth, syncRateLimit, async (req, res) => {
   // Grid covering entire India (lat 8-37, lng 68-97)
   // Every 3 degrees = ~330km apart, with 200km radius = full coverage
   const gridPoints = [];
@@ -166,7 +190,7 @@ router.get("/sync-india", async (req, res) => {
 
 // Add this AFTER the /sync-india route (after line 98) and BEFORE router.get("/", ...)
 
-router.get("/sync", async (req, res) => {
+router.get("/sync", adminAuth, syncRateLimit, async (req, res) => {
   const lat = req.query.lat || 20.5937;
   const lng = req.query.lng || 78.9629;
 
@@ -406,16 +430,7 @@ router.get("/fast", async (req, res) => {
 });
 
 // In chargers.js, replace GET /favorites:
-router.get("/favorites", async (req, res) => {
-  let userId = null;
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    try {
-      const jwt = require("jsonwebtoken");
-      const decoded = jwt.verify(authHeader.split(" ")[1], process.env.JWT_SECRET);
-      userId = decoded.userId;
-    } catch { }
-  }
+router.get("/favorites", authenticate, async (req, res) => {
 
   try {
     const result = await pool.query(`
@@ -425,7 +440,7 @@ router.get("/favorites", async (req, res) => {
       FROM chargers c
       JOIN favorites f ON c.id = f.charger_id
       WHERE f.user_id = $1
-    `, [userId]);
+    `, [req.userId]);
 
     res.json(result.rows);
   } catch (err) {
@@ -598,28 +613,8 @@ router.post("/route-chargers", async (req, res) => {
   }
 });
 
-router.post("/favorite/:id", async (req, res) => {
+router.post("/favorite/:id", authenticate, async (req, res) => {
   const chargerId = req.params.id;
-
-  // Extract user from token
-  let userId = null;
-  try {
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const jwt = require("jsonwebtoken");
-      const decoded = jwt.verify(
-        authHeader.split(" ")[1],
-        process.env.JWT_SECRET
-      );
-      userId = decoded.userId;
-    }
-  } catch (e) {
-    // no valid token
-  }
-
-  if (!userId) {
-    return res.status(401).json({ error: "Please sign in to save favorites" });
-  }
 
   try {
     // Check charger exists
@@ -633,7 +628,7 @@ router.post("/favorite/:id", async (req, res) => {
     // Check already favorited
     const existing = await pool.query(
       "SELECT id FROM favorites WHERE user_id = $1 AND charger_id = $2",
-      [userId, chargerId]
+      [req.userId, chargerId]
     );
     if (existing.rows.length > 0) {
       return res.status(200).json({ message: "Already in favorites ⭐" });
@@ -642,7 +637,7 @@ router.post("/favorite/:id", async (req, res) => {
     // Insert
     await pool.query(
       "INSERT INTO favorites (user_id, charger_id) VALUES ($1, $2)",
-      [userId, chargerId]
+      [req.userId, chargerId]
     );
 
     res.json({ message: "Added to favorites ⭐" });
@@ -652,37 +647,14 @@ router.post("/favorite/:id", async (req, res) => {
   }
 });
 
-router.delete("/favorite/:id", async (req, res) => {
+router.delete("/favorite/:id", authenticate, async (req, res) => {
   const chargerId = req.params.id;
-
-  let userId = null;
-  try {
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const jwt = require("jsonwebtoken");
-      const decoded = jwt.verify(
-        authHeader.split(" ")[1],
-        process.env.JWT_SECRET
-      );
-      userId = decoded.userId;
-    }
-  } catch (e) {
-    console.error("Token error:", e.message);
-  }
-
-  console.log("DELETE favorite - userId:", userId, "chargerId:", chargerId);
-
-  if (!userId) {
-    return res.status(401).json({ error: "Please sign in" });
-  }
 
   try {
     const result = await pool.query(
       "DELETE FROM favorites WHERE user_id = $1 AND charger_id = $2 RETURNING id",
-      [userId, chargerId]
+      [req.userId, chargerId]
     );
-
-    console.log("Delete result:", result.rows);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Not in your favorites" });
