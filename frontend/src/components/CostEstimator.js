@@ -10,6 +10,10 @@ export default function CostEstimator({ station, onClose }) {
     current_battery_pct: 20,
     target_battery_pct: 80,
     cost_per_kwh: 12,
+    session_fee_inr: 0,
+    idle_fee_inr_per_min: 0,
+    expected_idle_minutes: 0,
+    gst_percent: 18,
   });
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -112,6 +116,29 @@ export default function CostEstimator({ station, onClose }) {
             placeholder="12" value={form.cost_per_kwh} onChange={handle} />
         </div>
 
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div>
+            <label style={s.label}>Session Fee (₹)</label>
+            <input style={s.input} name="session_fee_inr" type="number"
+              placeholder="0" value={form.session_fee_inr} onChange={handle} />
+          </div>
+          <div>
+            <label style={s.label}>GST (%)</label>
+            <input style={s.input} name="gst_percent" type="number"
+              placeholder="18" value={form.gst_percent} onChange={handle} />
+          </div>
+          <div>
+            <label style={s.label}>Idle Fee / min (₹)</label>
+            <input style={s.input} name="idle_fee_inr_per_min" type="number"
+              placeholder="0" value={form.idle_fee_inr_per_min} onChange={handle} />
+          </div>
+          <div>
+            <label style={s.label}>Expected Idle (min)</label>
+            <input style={s.input} name="expected_idle_minutes" type="number"
+              placeholder="0" value={form.expected_idle_minutes} onChange={handle} />
+          </div>
+        </div>
+
         <button style={s.btn} onClick={estimate} disabled={loading || !form.battery_capacity_kwh}>
           {loading ? "Calculating..." : "Calculate"}
         </button>
@@ -122,11 +149,18 @@ export default function CostEstimator({ station, onClose }) {
             <p style={s.resultsTitle}>Charging Estimate</p>
             <div style={s.resultsGrid}>
               <ResultCard icon="⏱️" label="Charging Time" value={result.chargingTimeFormatted} color="#2563eb" />
-              <ResultCard icon="💰" label="Estimated Cost" value={`₹${result.estimatedCostInr}`} color="#059669" />
+              <ResultCard icon="💰" label="Total Cost" value={`₹${result.totalCostInr ?? result.estimatedCostInr}`} color="#059669" />
               <ResultCard icon="⚡" label="Energy Needed" value={`${result.energyNeededKwh} kWh`} color="#d97706" />
               {result.rangeAddedKm && (
                 <ResultCard icon="🛣️" label="Range Added" value={`+${result.rangeAddedKm} km`} color="#7c3aed" />
               )}
+            </div>
+            <div style={{ marginTop: 10, fontSize: 12, color: "#14532d", lineHeight: 1.55 }}>
+              <div>Energy: ₹{result.energyCostInr ?? result.estimatedCostInr}</div>
+              <div>Session fee: ₹{result.sessionFeeInr ?? 0}</div>
+              <div>Idle estimate: ₹{result.idlePenaltyEstimateInr ?? 0}</div>
+              <div>Tax ({result.gstPercent ?? 0}%): ₹{result.taxInr ?? 0}</div>
+              <div style={{ fontWeight: 700, marginTop: 3 }}>Total payable: ₹{result.totalCostInr ?? result.estimatedCostInr}</div>
             </div>
             <p style={s.disclaimer}>
               * Estimate based on {station.power_kw}kW charger at 90% efficiency.

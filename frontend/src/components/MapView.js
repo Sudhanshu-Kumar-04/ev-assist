@@ -166,6 +166,7 @@ export default function MapView() {
   const [favoriteIds, setFavoriteIds] = useState(new Set());
   const [showFavorites, setShowFavorites] = useState(false);
   const [showRoutePlanner, setShowRoutePlanner] = useState(false);
+  const [reportingIssueId, setReportingIssueId] = useState(null);
   const [sortBy, setSortBy] = useState("distance");
   const [plugFilter, setPlugFilter] = useState("any");
   const [minRating, setMinRating] = useState("any");
@@ -295,16 +296,46 @@ export default function MapView() {
     }
   };
 
-  // Add this function in MapView:
-  const loadFavorites = async () => {
-    if (!user) { alert("Please sign in to view favorites"); return; }
+  const reportIssue = async (station) => {
+    if (!user || !token) {
+      alert("Please sign in to report charger issues.");
+      return;
+    }
+
+    const typed = window.prompt(
+      "Issue type?\nUse one: offline, connector_broken, payment_failed, blocked, slow_charging, other"
+    );
+    if (!typed) return;
+
+    const issueType = String(typed).trim().toLowerCase();
+    const allowed = [
+      "offline",
+      "connector_broken",
+      "payment_failed",
+      "blocked",
+      "slow_charging",
+      "other",
+    ];
+
+    if (!allowed.includes(issueType)) {
+      alert("Invalid issue type. Please use one of the listed values.");
+      return;
+    }
+
+    const note = window.prompt("Optional note (max 300 chars)") || "";
+    setReportingIssueId(station.id);
     try {
-      const res = await axios.get("/chargers/favorites", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setStations(res.data);
-      if (res.data.length === 0) alert("No favorites yet! Click ⭐ on any charger to save it.");
-    } catch (err) { console.error(err); }
+      await axios.post(
+        `/chargers/${station.id}/report-issue`,
+        { issueType, note: note.slice(0, 300) || null },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      alert("Issue reported. Thank you!");
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to report issue");
+    } finally {
+      setReportingIssueId(null);
+    }
   };
 
   const filteredStations = useMemo(() => {
@@ -590,6 +621,8 @@ export default function MapView() {
                 {(station.town || station.state) ? <>📍 {station.town || ""}{station.town && station.state ? ", " : ""}{station.state || ""}<br /></> : null}
                 {station.distance_km ? <>📏 Distance: <b>{Number(station.distance_km).toFixed(1)} km</b><br /></> : null}
                 {station.rating ? <>⭐ Rating: <b>{Number(station.rating).toFixed(1)}</b>{station.review_count ? ` (${station.review_count})` : ""}<br /></> : <>⭐ Rating: N/A<br /></>}
+                {station.reliability_score ? <>🛡️ Reliability: <b>{station.reliability_score}/100</b><br /></> : null}
+                {station.status_confidence ? <>📶 Data confidence: <b>{station.data_confidence_label || "medium"} ({station.status_confidence}/100)</b><br /></> : null}
                 {typeof station.is_operational === "boolean" ? (
                   <>🟢 Status: <b>{station.is_operational ? "Open now" : "May be closed"}</b><br /></>
                 ) : station.status_text ? (
@@ -662,6 +695,13 @@ export default function MapView() {
                         style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "none", background: "#059669", color: "#fff", cursor: "pointer", fontWeight: 600 }}
                       >
                         💰 Cost
+                      </button>
+                      <button
+                        onClick={() => reportIssue(station)}
+                        disabled={reportingIssueId === station.id}
+                        style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "none", background: "#f59e0b", color: "#111827", cursor: "pointer", fontWeight: 700, opacity: reportingIssueId === station.id ? 0.7 : 1 }}
+                      >
+                        {reportingIssueId === station.id ? "Reporting..." : "⚠️ Report"}
                       </button>
                     </>
                   ) : (
@@ -737,6 +777,7 @@ export default function MapView() {
                 </div>
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12, color: "#1f2937", fontWeight: 600 }}>
                   <span>⭐ {station.rating ? Number(station.rating).toFixed(1) : "N/A"}{station.review_count ? ` (${station.review_count})` : ""}</span>
+                  <span>🛡️ {station.reliability_score ? `${station.reliability_score}/100` : "N/A"}</span>
                   <span>📏 {station.distance_km ? `${Number(station.distance_km).toFixed(1)} km` : "-"}</span>
                   <span>⚡ {getPowerLabel(station)}</span>
                   <span>{station.is_operational === true ? "🟢 Open now" : station.is_operational === false ? "🔴 Closed/Unknown" : "⚪ Status N/A"}</span>

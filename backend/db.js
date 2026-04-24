@@ -140,6 +140,22 @@ const initDB = async () => {
     `);
     console.log("✅ password_reset_tokens table ready");
 
+    // 6. Charger issue reports from community feedback
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS charger_issue_reports (
+        id SERIAL PRIMARY KEY,
+        charger_id INTEGER REFERENCES chargers(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        issue_type VARCHAR(40) NOT NULL,
+        note TEXT,
+        status VARCHAR(20) DEFAULT 'open',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_charger_issue_reports_charger_id ON charger_issue_reports(charger_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_charger_issue_reports_created_at ON charger_issue_reports(created_at)`);
+    console.log("✅ charger_issue_reports table ready");
+
     console.log("✅ All database tables initialized");
   } catch (err) {
     console.error("❌ Database initialization error:", err.message);

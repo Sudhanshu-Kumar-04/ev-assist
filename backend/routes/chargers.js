@@ -13,6 +13,50 @@ const fetch = (...args) =>
 const mlTargets = [ML_SERVICE_URL, ML_FALLBACK_URL].filter(Boolean);
 const syncRateState = new Map();
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function addStationInsights(stations) {
+  return stations.map((station) => {
+    const rating = Number(station.rating || 0);
+    const reviewCount = Number(station.review_count || 0);
+
+    let reliability = 40;
+    if (station.is_operational === true) reliability += 20;
+    if (station.is_operational === false) reliability -= 20;
+    if (reviewCount > 0) reliability += Math.min(20, reviewCount * 2);
+    if (rating > 0) reliability += rating * 4;
+    if (station.operator_name) reliability += 5;
+    if (station.contact_phone) reliability += 5;
+    if (station.website_url) reliability += 5;
+    if (station.usage_cost) reliability += 5;
+    if (station.connection_type || station.current_type) reliability += 5;
+    if (Number(station.quantity || 0) > 1) reliability += 5;
+
+    let confidence = 25;
+    if (typeof station.is_operational === "boolean") confidence += 35;
+    if (station.status_text) confidence += 10;
+    if (reviewCount > 0) confidence += Math.min(20, reviewCount * 2);
+    if (station.operator_name) confidence += 10;
+    if (station.contact_phone || station.website_url) confidence += 10;
+    if (station.usage_cost) confidence += 5;
+    if (station.ocm_id) confidence += 5;
+
+    const reliabilityScore = Math.round(clamp(reliability, 5, 99));
+    const confidenceScore = Math.round(clamp(confidence, 5, 99));
+    const confidenceLabel =
+      confidenceScore >= 75 ? "high" : confidenceScore >= 45 ? "medium" : "low";
+
+    return {
+      ...station,
+      reliability_score: reliabilityScore,
+      status_confidence: confidenceScore,
+      data_confidence_label: confidenceLabel,
+    };
+  });
+}
+
 function syncRateLimit(req, res, next) {
   const now = Date.now();
   const windowMs = 10 * 60 * 1000;
@@ -338,7 +382,7 @@ router.get("/", async (req, res) => {
         LIMIT $4
       `, [lat, lng, radiusKm, limit]);
 
-      return res.json(result.rows);
+      return res.json(addStationInsights(result.rows));
     }
 
     res.json([]);
@@ -363,7 +407,7 @@ router.get("/filter", async (req, res) => {
       [minPower || 0]
     );
 
-    res.json(result.rows);
+    res.json(addStationInsights(result.rows));
   } catch (err) {
     res.status(500).json({ error: "Filter failed" });
   }
@@ -389,7 +433,7 @@ router.get("/nearby", async (req, res) => {
       [lat, lng]
     );
 
-    res.json(result.rows);
+    res.json(addStationInsights(result.rows));
   } catch (err) {
     res.status(500).json({ error: "Failed" });
   }
@@ -423,7 +467,7 @@ router.get("/fast", async (req, res) => {
         FROM chargers WHERE power_kw >= 50
       `);
     }
-    res.json(result.rows);
+    res.json(addStationInsights(result.rows));
   } catch (err) {
     res.status(500).json({ error: "Failed" });
   }
@@ -442,7 +486,7 @@ router.get("/favorites", authenticate, async (req, res) => {
       WHERE f.user_id = $1
     `, [req.userId]);
 
-    res.json(result.rows);
+    res.json(addStationInsights(result.rows));
   } catch (err) {
     res.status(500).json({ error: "Failed" });
   }
@@ -528,6 +572,10 @@ router.post("/estimate-cost", async (req, res) => {
       target_battery_pct,
       power_kw,
       cost_per_kwh = 12,
+      session_fee_inr = 0,
+      idle_fee_inr_per_min = 0,
+      expected_idle_minutes = 0,
+      gst_percent = 18,
     } = req.body;
 
     if (!battery_capacity_kwh || !power_kw) {
@@ -538,11 +586,20 @@ router.post("/estimate-cost", async (req, res) => {
     const targetPct = parseFloat(target_battery_pct) || 80;
     const batteryKwh = parseFloat(battery_capacity_kwh);
     const chargerKw = parseFloat(power_kw);
+    const pricePerKwh = parseFloat(cost_per_kwh) || 0;
+    const sessionFee = parseFloat(session_fee_inr) || 0;
+    const idleFeePerMin = parseFloat(idle_fee_inr_per_min) || 0;
+    const expectedIdleMinutes = parseFloat(expected_idle_minutes) || 0;
+    const gstPercent = parseFloat(gst_percent) || 0;
 
     const energyNeededKwh = batteryKwh * (targetPct - currentPct) / 100;
     const chargingTimeHours = energyNeededKwh / (chargerKw * 0.9);
     const chargingTimeMinutes = Math.round(chargingTimeHours * 60);
-    const estimatedCost = Math.round(energyNeededKwh * cost_per_kwh);
+    const energyCost = energyNeededKwh * pricePerKwh;
+    const idlePenalty = idleFeePerMin * expectedIdleMinutes;
+    const subtotal = energyCost + sessionFee + idlePenalty;
+    const tax = subtotal * (gstPercent / 100);
+    const total = subtotal + tax;
 
     const rangeAdded = req.body.range_km
       ? Math.round((targetPct - currentPct) / 100 * parseFloat(req.body.range_km))
@@ -554,7 +611,14 @@ router.post("/estimate-cost", async (req, res) => {
       chargingTimeFormatted: chargingTimeMinutes >= 60
         ? `${Math.floor(chargingTimeMinutes / 60)}h ${chargingTimeMinutes % 60}m`
         : `${chargingTimeMinutes} min`,
-      estimatedCostInr: estimatedCost,
+      estimatedCostInr: Math.round(total),
+      energyCostInr: Number(energyCost.toFixed(2)),
+      sessionFeeInr: Number(sessionFee.toFixed(2)),
+      idlePenaltyEstimateInr: Number(idlePenalty.toFixed(2)),
+      subtotalInr: Number(subtotal.toFixed(2)),
+      gstPercent: Number(gstPercent.toFixed(2)),
+      taxInr: Number(tax.toFixed(2)),
+      totalCostInr: Number(total.toFixed(2)),
       rangeAddedKm: rangeAdded,
       from: `${currentPct}%`,
       to: `${targetPct}%`,
@@ -605,7 +669,7 @@ router.post("/route-chargers", async (req, res) => {
       [lineStringWKT]
     );
 
-    res.json(result.rows);
+    res.json(addStationInsights(result.rows));
 
   } catch (error) {
     console.error("Route POST Error:", error);
@@ -664,6 +728,49 @@ router.delete("/favorite/:id", authenticate, async (req, res) => {
   } catch (err) {
     console.error("Remove favorite error:", err.message);
     res.status(500).json({ error: "Failed to remove: " + err.message });
+  }
+});
+
+router.post("/:id/report-issue", authenticate, async (req, res) => {
+  const chargerId = Number(req.params.id);
+  const issueType = String(req.body?.issueType || "").trim().toLowerCase();
+  const note = String(req.body?.note || "").trim() || null;
+  const allowedIssueTypes = [
+    "offline",
+    "connector_broken",
+    "payment_failed",
+    "blocked",
+    "slow_charging",
+    "other",
+  ];
+
+  if (!Number.isFinite(chargerId)) {
+    return res.status(400).json({ error: "Invalid charger id" });
+  }
+
+  if (!allowedIssueTypes.includes(issueType)) {
+    return res.status(400).json({
+      error: "Invalid issueType",
+      allowedIssueTypes,
+    });
+  }
+
+  try {
+    const chargerCheck = await pool.query("SELECT id FROM chargers WHERE id = $1", [chargerId]);
+    if (chargerCheck.rows.length === 0) {
+      return res.status(404).json({ error: "Charger not found" });
+    }
+
+    await pool.query(
+      `INSERT INTO charger_issue_reports (charger_id, user_id, issue_type, note)
+       VALUES ($1, $2, $3, $4)`,
+      [chargerId, req.userId, issueType, note]
+    );
+
+    return res.json({ message: "Issue reported. Thanks for helping improve data quality." });
+  } catch (err) {
+    console.error("Issue report error:", err.message);
+    return res.status(500).json({ error: "Failed to report issue" });
   }
 });
 
