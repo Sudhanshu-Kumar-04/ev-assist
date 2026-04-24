@@ -17,6 +17,51 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function parseApproxCostPerKwh(rawUsageCost) {
+  const raw = String(rawUsageCost || "");
+  const match = raw.match(/(\d+(?:\.\d+)?)/);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function estimateWaitFallback({ power_kw, num_ports, current_occupancy }) {
+  const power = Math.max(1, Number(power_kw || 22));
+  const ports = Math.max(1, Number(num_ports || 2));
+  const occupancy = clamp(Number(current_occupancy || 0), 0, ports);
+  const occupancyRatio = occupancy / ports;
+  const hour = new Date().getHours();
+  const isPeak = (hour >= 8 && hour <= 11) || (hour >= 17 && hour <= 22);
+
+  // Slower chargers and peak windows typically experience longer waits.
+  const base = power >= 120 ? 6 : power >= 60 ? 10 : power >= 30 ? 14 : 18;
+  const queuePressure = occupancyRatio * 28;
+  const peakPenalty = isPeak ? 8 : 0;
+  const estimated = Math.round(base + queuePressure + peakPenalty);
+
+  let label = "Low wait";
+  let color = "green";
+  if (estimated > 35) {
+    label = `High wait (~${estimated} min)`;
+    color = "red";
+  } else if (estimated > 20) {
+    label = `Moderate wait (~${estimated} min)`;
+    color = "orange";
+  } else if (estimated > 12) {
+    label = `Mild wait (~${estimated} min)`;
+    color = "yellow";
+  }
+
+  return {
+    estimated_wait_min: estimated,
+    label,
+    color,
+    confidence: "medium",
+    source: "heuristic",
+    connector_utilization_label: `${occupancy}/${ports} ports busy`,
+  };
+}
+
 async function getIssueStatsByChargerIds(chargerIds) {
   if (!chargerIds.length) return new Map();
 
@@ -598,7 +643,8 @@ router.post("/predict-wait", async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error("ML service error:", err.message);
-    res.status(503).json({ error: "Prediction service unavailable" });
+    const fallback = estimateWaitFallback(req.body || {});
+    res.json(fallback);
   }
 });
 
@@ -679,7 +725,7 @@ router.post("/estimate-cost", async (req, res) => {
 // Now checks ALL sampled points along the route, not just points[0]
 router.post("/route-chargers", async (req, res) => {
   try {
-    const { points } = req.body;
+    const { points, evProfile = {}, routeDistanceKm = null } = req.body;
 
     if (!points || !Array.isArray(points) || points.length === 0) {
       return res.status(400).json({ error: "No route points provided" });
@@ -693,6 +739,9 @@ router.post("/route-chargers", async (req, res) => {
 
     const lineStringWKT = `LINESTRING(${lineStringCoords})`;
 
+    const startLng = Number(points[0]?.lng);
+    const startLat = Number(points[0]?.lat);
+
     const result = await pool.query(
       `
       SELECT DISTINCT ON (c.id)
@@ -700,10 +749,15 @@ router.post("/route-chargers", async (req, res) => {
              c.connection_type, c.current_type, c.quantity,
              ST_Y(c.location::geometry) AS latitude,
              ST_X(c.location::geometry) AS longitude,
+             c.usage_cost,
              ST_Distance(
                c.location::geography,
                ST_GeomFromText($1, 4326)::geography
-             ) / 1000 AS distance_km
+             ) / 1000 AS distance_km,
+             ST_Distance(
+               c.location::geography,
+               ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography
+             ) / 1000 AS distance_from_start_km
       FROM chargers c
       WHERE ST_DWithin(
         c.location::geography,
@@ -713,10 +767,121 @@ router.post("/route-chargers", async (req, res) => {
       ORDER BY c.id, distance_km ASC
       LIMIT 100
       `,
-      [lineStringWKT]
+      [lineStringWKT, startLng, startLat]
     );
 
-    res.json(await addStationInsights(result.rows));
+    const enriched = await addStationInsights(result.rows);
+
+    const batteryPct = clamp(Number(evProfile.batteryPct ?? 60), 5, 100);
+    const batteryCapacityKwh = Math.max(10, Number(evProfile.batteryCapacityKwh ?? 60));
+    const efficiencyKmPerKwh = Math.max(2, Number(evProfile.efficiencyKmPerKwh ?? 6));
+    const reservePct = clamp(Number(evProfile.reservePct ?? 15), 5, 40);
+    const targetChargePct = clamp(Number(evProfile.targetChargePct ?? 80), reservePct + 5, 100);
+    const legSafetyFactor = clamp(Number(evProfile.legSafetyFactor ?? 0.85), 0.65, 0.95);
+
+    const usableKwh = batteryCapacityKwh * ((batteryPct - reservePct) / 100);
+    const theoreticalMaxLegKm = Math.max(20, usableKwh * efficiencyKmPerKwh);
+    const recommendedLegKm = Math.max(20, theoreticalMaxLegKm * legSafetyFactor);
+
+    const totalDistance = Number.isFinite(Number(routeDistanceKm))
+      ? Number(routeDistanceKm)
+      : Math.max(...enriched.map((s) => Number(s.distance_from_start_km || 0)), 0);
+
+    const chargeWindowKwh = batteryCapacityKwh * ((targetChargePct - reservePct) / 100);
+
+    const planStops = [];
+    const usedIds = new Set();
+    let targetDistance = recommendedLegKm;
+
+    while (targetDistance < Math.max(0, totalDistance - recommendedLegKm * 0.55)) {
+      const candidates = enriched
+        .filter((s) => !usedIds.has(s.id))
+        .filter((s) => {
+          const d = Number(s.distance_from_start_km || 0);
+          return d >= targetDistance - 25 && d <= targetDistance + 45;
+        });
+
+      if (!candidates.length) {
+        targetDistance += recommendedLegKm;
+        continue;
+      }
+
+      const scored = candidates.map((s) => {
+        const power = Math.max(10, Number(s.power_kw || 25));
+        const wait = estimateWaitFallback({
+          power_kw: power,
+          num_ports: Number(s.quantity || 2),
+          current_occupancy: Math.max(0, Number(s.open_issue_count || 0) * 0.35),
+        }).estimated_wait_min;
+
+        const chargeMinutes = Math.round((chargeWindowKwh / (power * 0.9)) * 60);
+        const reliability = Number(s.reliability_score || 60);
+        const distancePenalty = Math.abs(Number(s.distance_from_start_km || 0) - targetDistance);
+        const costPerKwh = parseApproxCostPerKwh(s.usage_cost) ?? 12;
+        const estimatedEnergyCost = costPerKwh * chargeWindowKwh;
+
+        const fastestScore = wait + chargeMinutes + distancePenalty * 0.65;
+        const cheapestReliableScore = estimatedEnergyCost + wait * 0.4 + Math.max(0, 75 - reliability) * 1.35;
+
+        return {
+          ...s,
+          planning_wait_min: wait,
+          planning_charge_min: chargeMinutes,
+          planning_cost_per_kwh: Number(costPerKwh.toFixed(2)),
+          fastestScore,
+          cheapestReliableScore,
+        };
+      });
+
+      const fastest = [...scored].sort((a, b) => a.fastestScore - b.fastestScore)[0];
+      const cheapestReliable = [...scored].sort((a, b) => a.cheapestReliableScore - b.cheapestReliableScore)[0];
+
+      usedIds.add(fastest.id);
+      planStops.push({
+        target_distance_km: Number(targetDistance.toFixed(1)),
+        fastest,
+        cheapestReliable,
+      });
+
+      targetDistance += recommendedLegKm;
+    }
+
+    const primaryStops = planStops.map((s) => ({
+      strategy: "fastest",
+      target_distance_km: s.target_distance_km,
+      station: s.fastest,
+    }));
+
+    const backupStops = planStops
+      .map((s) => s.cheapestReliable)
+      .filter((s) => s && !usedIds.has(s.id))
+      .map((station) => ({
+        strategy: "cheapest_reliable",
+        station,
+      }));
+
+    const recommendedOrderedIds = [
+      ...primaryStops.map((s) => s.station.id),
+      ...backupStops.map((s) => s.station.id),
+    ];
+    const recommendedSet = new Set(recommendedOrderedIds);
+    const orderedStations = [
+      ...enriched.filter((s) => recommendedSet.has(s.id)).sort((a, b) => {
+        return recommendedOrderedIds.indexOf(a.id) - recommendedOrderedIds.indexOf(b.id);
+      }),
+      ...enriched.filter((s) => !recommendedSet.has(s.id)),
+    ];
+
+    res.json({
+      stations: orderedStations,
+      recommendations: {
+        totalDistanceKm: Number(totalDistance.toFixed(1)),
+        theoreticalMaxLegKm: Number(theoreticalMaxLegKm.toFixed(1)),
+        recommendedLegKm: Number(recommendedLegKm.toFixed(1)),
+        primaryStops,
+        backupStops,
+      },
+    });
 
   } catch (error) {
     console.error("Route POST Error:", error);

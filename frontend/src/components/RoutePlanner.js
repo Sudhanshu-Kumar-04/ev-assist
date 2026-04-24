@@ -1,11 +1,21 @@
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
+import EVConfig from "./EVConfig";
 
 export default function RoutePlanner({ setStations, setRoute, isMobile = false, onHeightChange }) {
     const [from, setFrom] = useState("");
     const [to, setTo] = useState("");
     const [loading, setLoading] = useState(false);
     const [isOpen, setIsOpen] = useState(!isMobile);
+    const [recommendations, setRecommendations] = useState(null);
+    const [evProfile, setEvProfile] = useState({
+        batteryPct: 60,
+        batteryCapacityKwh: 60,
+        efficiencyKmPerKwh: 6,
+        reservePct: 15,
+        targetChargePct: 80,
+        legSafetyFactor: 0.85,
+    });
     const plannerRef = useRef(null);
 
     useEffect(() => {
@@ -88,10 +98,21 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false, 
 
             const chargers = await axios.post(
                 "/chargers/route-chargers",
-                { points: finalPoints }
+                {
+                    points: finalPoints,
+                    routeDistanceKm: Number(routeData.distance || 0) / 1000,
+                    evProfile,
+                }
             );
 
-            setStations(chargers.data);
+            if (Array.isArray(chargers.data)) {
+                // Backward compatibility with older backend shape.
+                setStations(chargers.data);
+                setRecommendations(null);
+            } else {
+                setStations(chargers.data.stations || []);
+                setRecommendations(chargers.data.recommendations || null);
+            }
 
         } catch (err) {
             console.error(err);
@@ -159,6 +180,58 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false, 
             >
                 {loading ? "Finding..." : "Find Route"}
             </button>
+
+            <div style={{ gridColumn: "1 / -1", marginTop: 4 }}>
+                <EVConfig
+                    onConfigChange={(cfg) => {
+                        const batteryPct = Number(cfg.battery) || 60;
+                        const batteryCapacityKwh = Number(cfg.capacity) || 60;
+                        const efficiencyKmPerKwh = Number(cfg.efficiency) || 6;
+                        const reservePct = Number(cfg.reservePct) || 15;
+                        const targetChargePct = Number(cfg.targetChargePct) || 80;
+                        const legSafetyFactor = Number(cfg.legSafetyFactor) || 0.85;
+                        setEvProfile((prev) => ({
+                            ...prev,
+                            batteryPct,
+                            batteryCapacityKwh,
+                            efficiencyKmPerKwh,
+                            reservePct,
+                            targetChargePct,
+                            legSafetyFactor,
+                        }));
+                    }}
+                />
+            </div>
+
+            {recommendations ? (
+                <div
+                    style={{
+                        gridColumn: "1 / -1",
+                        border: "1px solid #d1fae5",
+                        background: "#f0fdf4",
+                        borderRadius: 10,
+                        padding: 10,
+                        marginTop: 2,
+                    }}
+                >
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#065f46" }}>
+                        Smart plan: {recommendations.primaryStops?.length || 0} primary stops, {recommendations.backupStops?.length || 0} backups
+                    </div>
+                    <div style={{ fontSize: 11, color: "#166534", marginTop: 3 }}>
+                        Route {recommendations.totalDistanceKm} km • Max leg {recommendations.recommendedLegKm} km
+                    </div>
+                    {(recommendations.primaryStops || []).slice(0, 2).map((stop, idx) => (
+                        <div key={`primary-${idx}`} style={{ fontSize: 11, marginTop: 5, color: "#14532d" }}>
+                            🚀 Stop {idx + 1}: {stop.station?.name || "Recommended station"} ({Math.round(stop.station?.planning_wait_min || 0)}m wait)
+                        </div>
+                    ))}
+                    {(recommendations.backupStops || []).slice(0, 1).map((stop, idx) => (
+                        <div key={`backup-${idx}`} style={{ fontSize: 11, marginTop: 5, color: "#1d4ed8" }}>
+                            💸 Backup: {stop.station?.name || "Backup station"} (₹{stop.station?.planning_cost_per_kwh || "~"}/kWh)
+                        </div>
+                    ))}
+                </div>
+            ) : null}
         </div>
     );
 

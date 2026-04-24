@@ -193,10 +193,14 @@ export default function MapView() {
 
     setWaitLoading((prev) => ({ ...prev, [station.id]: true }));
     try {
+      const occupancyHint = Math.min(
+        Number(station.quantity || 2),
+        Math.max(0, Math.round(Number(station.open_issue_count || 0) * 0.35))
+      );
       const res = await axios.post("/chargers/predict-wait", {
         power_kw: station.power_kw || 22,
         num_ports: station.quantity || 2,
-        current_occupancy: 0,
+        current_occupancy: occupancyHint,
       });
 
       if (res.data) {
