@@ -44,12 +44,13 @@ export default function AdminDashboard({ onClose }) {
 
         {/* Tabs */}
         <div style={s.tabs}>
-          {["overview", "chargers", "reservations", "users"].map(t => (
+          {["overview", "chargers", "reservations", "users", "issues"].map(t => (
             <button key={t} style={{ ...s.tab, ...(tab === t ? s.tabActive : {}) }}
               onClick={() => setTab(t)}>
               {t === "overview" ? "📊 Overview" :
                 t === "chargers" ? "⚡ Chargers" :
-                  t === "reservations" ? "📅 Reservations" : "👥 Users"}
+                  t === "reservations" ? "📅 Reservations" :
+                    t === "users" ? "👥 Users" : "🚨 Issues"}
             </button>
           ))}
         </div>
@@ -60,6 +61,7 @@ export default function AdminDashboard({ onClose }) {
           {tab === "chargers" && <ChargersTab headers={headers} />}
           {tab === "reservations" && <ReservationsTab headers={headers} />}
           {tab === "users" && <UsersTab headers={headers} />}
+          {tab === "issues" && <IssuesTab headers={headers} />}
         </div>
       </div>
     </div>
@@ -88,6 +90,9 @@ function OverviewTab({ headers }) {
         <StatCard icon="👥" label="Total Users" value={stats.totalUsers} color="#10b981" />
         <StatCard icon="📅" label="All Bookings" value={stats.totalReservations} color="#8b5cf6" />
         <StatCard icon="🕐" label="Today's Bookings" value={stats.todayReservations} color="#f59e0b" />
+        <StatCard icon="🚨" label="Open Issues" value={stats.openIssues || 0} color="#ef4444" />
+        <StatCard icon="⚠️" label="Critical Open" value={stats.criticalOpenIssues || 0} color="#dc2626" />
+        <StatCard icon="✅" label="Resolved Issues" value={stats.resolvedIssues || 0} color="#059669" />
       </div>
 
       {/* Charts row */}
@@ -432,6 +437,125 @@ function UsersTab({ headers }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function IssuesTab({ headers }) {
+  const [issues, setIssues] = useState([]);
+  const [status, setStatus] = useState("");
+  const [type, setType] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [updatingId, setUpdatingId] = useState(null);
+  const LIMIT = 15;
+
+  const fetchIssues = () => {
+    axios.get(`${API}/issues?page=${page}&limit=${LIMIT}&status=${status}&issueType=${type}`, { headers })
+      .then((r) => {
+        setIssues(r.data.issues || []);
+        setTotal(r.data.total || 0);
+      })
+      .catch(console.error);
+  };
+
+  useEffect(() => {
+    fetchIssues();
+  }, [page, status, type]);
+
+  const updateStatus = async (issueId, nextStatus) => {
+    setUpdatingId(issueId);
+    try {
+      await axios.patch(`${API}/issues/${issueId}`, { status: nextStatus }, { headers });
+      fetchIssues();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to update issue");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <select
+          style={s.searchInput}
+          value={status}
+          onChange={(e) => { setStatus(e.target.value); setPage(1); }}
+        >
+          <option value="">All statuses</option>
+          <option value="open">Open</option>
+          <option value="in_review">In review</option>
+          <option value="resolved">Resolved</option>
+          <option value="dismissed">Dismissed</option>
+        </select>
+        <select
+          style={s.searchInput}
+          value={type}
+          onChange={(e) => { setType(e.target.value); setPage(1); }}
+        >
+          <option value="">All issue types</option>
+          <option value="offline">Offline</option>
+          <option value="connector_broken">Connector broken</option>
+          <option value="payment_failed">Payment failed</option>
+          <option value="blocked">Blocked</option>
+          <option value="slow_charging">Slow charging</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+
+      <p style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>{total} issue reports</p>
+
+      <table style={s.table}>
+        <thead>
+          <tr style={s.theadRow}>
+            <th style={s.th}>When</th>
+            <th style={s.th}>Station</th>
+            <th style={s.th}>Issue</th>
+            <th style={s.th}>Reporter</th>
+            <th style={s.th}>Status</th>
+            <th style={s.th}>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {issues.length === 0 ? (
+            <tr><td colSpan={6} style={{ textAlign: "center", padding: 20, color: "#9ca3af" }}>No issue reports found</td></tr>
+          ) : issues.map((issue) => (
+            <tr key={issue.id} style={s.tbodyRow}>
+              <td style={s.td}>{new Date(issue.created_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</td>
+              <td style={s.td}>
+                <div style={{ fontWeight: 600 }}>{issue.charger_name || "—"}</div>
+                <div style={{ fontSize: 11, color: "#6b7280" }}>{issue.charger_address || "—"}</div>
+              </td>
+              <td style={s.td}>
+                <div style={{ fontWeight: 600 }}>{issue.issue_type}</div>
+                <div style={{ fontSize: 11, color: "#6b7280", maxWidth: 220, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{issue.note || "No note"}</div>
+              </td>
+              <td style={s.td}>{issue.reported_by_name || issue.reported_by_email || "Anonymous"}</td>
+              <td style={s.td}>{issue.status}</td>
+              <td style={s.td}>
+                <select
+                  style={s.searchInput}
+                  value={issue.status}
+                  disabled={updatingId === issue.id}
+                  onChange={(e) => updateStatus(issue.id, e.target.value)}
+                >
+                  <option value="open">open</option>
+                  <option value="in_review">in_review</option>
+                  <option value="resolved">resolved</option>
+                  <option value="dismissed">dismissed</option>
+                </select>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+        <button style={s.pageBtn} disabled={page === 1} onClick={() => setPage((p) => p - 1)}>← Prev</button>
+        <span style={{ fontSize: 13, padding: "4px 8px" }}>Page {page} of {Math.max(1, Math.ceil(total / LIMIT))}</span>
+        <button style={s.pageBtn} disabled={page >= Math.ceil(total / LIMIT)} onClick={() => setPage((p) => p + 1)}>Next →</button>
+      </div>
     </div>
   );
 }

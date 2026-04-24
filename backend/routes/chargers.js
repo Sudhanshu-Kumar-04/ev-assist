@@ -17,10 +17,49 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function addStationInsights(stations) {
+async function getIssueStatsByChargerIds(chargerIds) {
+  if (!chargerIds.length) return new Map();
+
+  const stats = await pool.query(
+    `SELECT
+       charger_id,
+       COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')::int AS report_count_7d,
+       COUNT(*) FILTER (WHERE status IN ('open','in_review'))::int AS open_report_count,
+       COUNT(*) FILTER (
+         WHERE status IN ('open','in_review')
+           AND issue_type IN ('offline','connector_broken','payment_failed')
+       )::int AS critical_open_report_count
+     FROM charger_issue_reports
+     WHERE charger_id = ANY($1::int[])
+     GROUP BY charger_id`,
+    [chargerIds]
+  );
+
+  const map = new Map();
+  for (const row of stats.rows) {
+    map.set(Number(row.charger_id), {
+      report_count_7d: Number(row.report_count_7d || 0),
+      open_report_count: Number(row.open_report_count || 0),
+      critical_open_report_count: Number(row.critical_open_report_count || 0),
+    });
+  }
+
+  return map;
+}
+
+async function addStationInsights(stations) {
+  const issueStats = await getIssueStatsByChargerIds(
+    stations.map((s) => Number(s.id)).filter((id) => Number.isFinite(id))
+  );
+
   return stations.map((station) => {
     const rating = Number(station.rating || 0);
     const reviewCount = Number(station.review_count || 0);
+    const stats = issueStats.get(Number(station.id)) || {
+      report_count_7d: 0,
+      open_report_count: 0,
+      critical_open_report_count: 0,
+    };
 
     let reliability = 40;
     if (station.is_operational === true) reliability += 20;
@@ -33,6 +72,8 @@ function addStationInsights(stations) {
     if (station.usage_cost) reliability += 5;
     if (station.connection_type || station.current_type) reliability += 5;
     if (Number(station.quantity || 0) > 1) reliability += 5;
+    reliability -= stats.open_report_count * 6;
+    reliability -= stats.critical_open_report_count * 10;
 
     let confidence = 25;
     if (typeof station.is_operational === "boolean") confidence += 35;
@@ -42,6 +83,9 @@ function addStationInsights(stations) {
     if (station.contact_phone || station.website_url) confidence += 10;
     if (station.usage_cost) confidence += 5;
     if (station.ocm_id) confidence += 5;
+    confidence += Math.min(10, reviewCount);
+    confidence -= stats.open_report_count * 4;
+    confidence -= stats.critical_open_report_count * 6;
 
     const reliabilityScore = Math.round(clamp(reliability, 5, 99));
     const confidenceScore = Math.round(clamp(confidence, 5, 99));
@@ -53,6 +97,9 @@ function addStationInsights(stations) {
       reliability_score: reliabilityScore,
       status_confidence: confidenceScore,
       data_confidence_label: confidenceLabel,
+      issue_report_count_7d: stats.report_count_7d,
+      open_issue_count: stats.open_report_count,
+      critical_open_issue_count: stats.critical_open_report_count,
     };
   });
 }
@@ -382,7 +429,7 @@ router.get("/", async (req, res) => {
         LIMIT $4
       `, [lat, lng, radiusKm, limit]);
 
-      return res.json(addStationInsights(result.rows));
+      return res.json(await addStationInsights(result.rows));
     }
 
     res.json([]);
@@ -407,7 +454,7 @@ router.get("/filter", async (req, res) => {
       [minPower || 0]
     );
 
-    res.json(addStationInsights(result.rows));
+    res.json(await addStationInsights(result.rows));
   } catch (err) {
     res.status(500).json({ error: "Filter failed" });
   }
@@ -433,7 +480,7 @@ router.get("/nearby", async (req, res) => {
       [lat, lng]
     );
 
-    res.json(addStationInsights(result.rows));
+    res.json(await addStationInsights(result.rows));
   } catch (err) {
     res.status(500).json({ error: "Failed" });
   }
@@ -467,7 +514,7 @@ router.get("/fast", async (req, res) => {
         FROM chargers WHERE power_kw >= 50
       `);
     }
-    res.json(addStationInsights(result.rows));
+    res.json(await addStationInsights(result.rows));
   } catch (err) {
     res.status(500).json({ error: "Failed" });
   }
@@ -486,7 +533,7 @@ router.get("/favorites", authenticate, async (req, res) => {
       WHERE f.user_id = $1
     `, [req.userId]);
 
-    res.json(addStationInsights(result.rows));
+    res.json(await addStationInsights(result.rows));
   } catch (err) {
     res.status(500).json({ error: "Failed" });
   }
@@ -669,7 +716,7 @@ router.post("/route-chargers", async (req, res) => {
       [lineStringWKT]
     );
 
-    res.json(addStationInsights(result.rows));
+    res.json(await addStationInsights(result.rows));
 
   } catch (error) {
     console.error("Route POST Error:", error);

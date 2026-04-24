@@ -13,6 +13,17 @@ router.get("/stats", adminAuth, async (req, res) => {
       pool.query("SELECT COUNT(*) FROM reservations WHERE reservation_date = CURRENT_DATE"),
     ]);
 
+    const issueSummary = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE status IN ('open','in_review'))::int AS open_count,
+        COUNT(*) FILTER (WHERE status = 'resolved')::int AS resolved_count,
+        COUNT(*) FILTER (
+          WHERE status IN ('open','in_review')
+            AND issue_type IN ('offline','connector_broken','payment_failed')
+        )::int AS critical_open_count
+      FROM charger_issue_reports
+    `);
+
     const resByStatus = await pool.query(`
       SELECT status, COUNT(*) as count 
       FROM reservations GROUP BY status
@@ -40,6 +51,9 @@ router.get("/stats", adminAuth, async (req, res) => {
       totalUsers: parseInt(users.rows[0].count),
       totalReservations: parseInt(reservations.rows[0].count),
       todayReservations: parseInt(todayRes.rows[0].count),
+      openIssues: issueSummary.rows[0]?.open_count || 0,
+      resolvedIssues: issueSummary.rows[0]?.resolved_count || 0,
+      criticalOpenIssues: issueSummary.rows[0]?.critical_open_count || 0,
       reservationsByStatus: resByStatus.rows,
       topChargers: topChargers.rows,
       dailyBookings: dailyBookings.rows,
@@ -160,6 +174,102 @@ router.get("/users", adminAuth, async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: "Failed" });
+  }
+});
+
+router.get("/issues", adminAuth, async (req, res) => {
+  const { page = 1, limit = 20, status = "", issueType = "" } = req.query;
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20));
+  const offset = (safePage - 1) * safeLimit;
+
+  try {
+    const filters = [];
+    const values = [];
+
+    if (status) {
+      values.push(String(status));
+      filters.push(`cir.status = $${values.length}`);
+    }
+    if (issueType) {
+      values.push(String(issueType));
+      filters.push(`cir.issue_type = $${values.length}`);
+    }
+
+    const whereClause = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+
+    values.push(safeLimit);
+    values.push(offset);
+    const listQuery = `
+      SELECT
+        cir.id,
+        cir.charger_id,
+        cir.user_id,
+        cir.issue_type,
+        cir.note,
+        cir.status,
+        cir.created_at,
+        c.name AS charger_name,
+        c.address AS charger_address,
+        u.name AS reported_by_name,
+        u.email AS reported_by_email
+      FROM charger_issue_reports cir
+      JOIN chargers c ON c.id = cir.charger_id
+      LEFT JOIN users u ON u.id = cir.user_id
+      ${whereClause}
+      ORDER BY cir.created_at DESC
+      LIMIT $${values.length - 1} OFFSET $${values.length}
+    `;
+
+    const issues = await pool.query(listQuery, values);
+
+    const countValues = values.slice(0, values.length - 2);
+    const totalResult = await pool.query(
+      `SELECT COUNT(*)::int AS count FROM charger_issue_reports cir ${whereClause}`,
+      countValues
+    );
+
+    res.json({
+      issues: issues.rows,
+      total: totalResult.rows[0]?.count || 0,
+      page: safePage,
+      limit: safeLimit,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch issues" });
+  }
+});
+
+router.patch("/issues/:id", adminAuth, async (req, res) => {
+  const issueId = Number(req.params.id);
+  const status = String(req.body?.status || "").trim();
+  const allowedStatuses = ["open", "in_review", "resolved", "dismissed"];
+
+  if (!Number.isFinite(issueId)) {
+    return res.status(400).json({ error: "Invalid issue id" });
+  }
+  if (!allowedStatuses.includes(status)) {
+    return res.status(400).json({ error: "Invalid status", allowedStatuses });
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE charger_issue_reports
+       SET status = $1
+       WHERE id = $2
+       RETURNING id, status`,
+      [status, issueId]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "Issue not found" });
+    }
+
+    return res.json({ message: "Issue updated", issue: result.rows[0] });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to update issue" });
   }
 });
 

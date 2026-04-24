@@ -75,6 +75,14 @@ function getPowerLabel(station) {
   return "Standard";
 }
 
+function parseApproxCostPerKwh(station) {
+  const raw = String(station?.usage_cost || "");
+  const match = raw.match(/(\d+(?:\.\d+)?)/);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
 function LocateMe({ userLocation, setUserLocation, setStations, isMobile }) {
   const map = useMap();
 
@@ -369,6 +377,22 @@ export default function MapView() {
       sorted.sort((a, b) => Number(b.rating || -1) - Number(a.rating || -1));
     } else if (sortBy === "power") {
       sorted.sort((a, b) => Number(b.power_kw || 0) - Number(a.power_kw || 0));
+    } else if (sortBy === "value") {
+      sorted.sort((a, b) => {
+        const aCost = parseApproxCostPerKwh(a) ?? 12;
+        const bCost = parseApproxCostPerKwh(b) ?? 12;
+        const aReliability = Number(a.reliability_score || 60);
+        const bReliability = Number(b.reliability_score || 60);
+        const aDistance = Number(a.distance_km || 999);
+        const bDistance = Number(b.distance_km || 999);
+
+        const aPenalty = Math.max(0, 70 - aReliability) * 0.18;
+        const bPenalty = Math.max(0, 70 - bReliability) * 0.18;
+
+        const aScore = aCost + aPenalty + aDistance * 0.08;
+        const bScore = bCost + bPenalty + bDistance * 0.08;
+        return aScore - bScore;
+      });
     } else {
       sorted.sort((a, b) => Number(a.distance_km || Number.MAX_VALUE) - Number(b.distance_km || Number.MAX_VALUE));
     }
@@ -491,6 +515,7 @@ export default function MapView() {
           <option value="distance">Sort: Nearest</option>
           <option value="rating">Sort: Top Rated</option>
           <option value="power">Sort: High Power</option>
+          <option value="value">Sort: Cheapest Reliable</option>
         </select>
         <select
           value={plugFilter}
