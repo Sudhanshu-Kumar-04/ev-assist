@@ -105,9 +105,14 @@ async function sendMail({ to, subject, text, html }) {
         return { sent: false, reason: "SMTP_NOT_CONFIGURED" };
     }
 
-    const from = process.env.SMTP_FROM || process.env.SMTP_USER;
-    await transporter.sendMail({ from, to, subject, text, html });
-    return { sent: true };
+    try {
+        const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+        await transporter.sendMail({ from, to, subject, text, html });
+        return { sent: true };
+    } catch (err) {
+        console.warn("SMTP send failed:", err.message);
+        return { sent: false, reason: "SMTP_SEND_FAILED", error: err.message };
+    }
 }
 
 function shouldExposeOtpFallback() {

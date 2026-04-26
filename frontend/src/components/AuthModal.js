@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 
@@ -25,6 +25,9 @@ export default function AuthModal({ onClose }) {
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [showNewPassword, setShowNewPassword] = useState(false);
+    const [fallbackOtp, setFallbackOtp] = useState("");
+    const [fallbackResetToken, setFallbackResetToken] = useState("");
+    const [resendCooldown, setResendCooldown] = useState(0);
 
     const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -63,6 +66,8 @@ export default function AuthModal({ onClose }) {
         setMode(nextMode);
         setError("");
         setInfo("");
+        setFallbackOtp("");
+        setFallbackResetToken("");
     };
 
     const handle = (e) => {
@@ -71,6 +76,41 @@ export default function AuthModal({ onClose }) {
     };
 
     const validateEmail = () => EMAIL_REGEX.test(String(form.email || "").trim().toLowerCase());
+
+    useEffect(() => {
+        if (resendCooldown <= 0) return undefined;
+        const timer = setInterval(() => {
+            setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [resendCooldown]);
+
+    const setDeliveryInfo = (responseData, defaultMessage) => {
+        const baseMessage = responseData?.message || defaultMessage;
+        const nextFallbackOtp = responseData?.fallbackOtp || responseData?.devOtp || "";
+        const nextFallbackResetToken = responseData?.fallbackResetToken || responseData?.devResetToken || "";
+
+        setInfo(baseMessage);
+        setFallbackOtp(nextFallbackOtp);
+        setFallbackResetToken(nextFallbackResetToken);
+
+        if (nextFallbackOtp) {
+            setForm((prev) => ({ ...prev, otp: nextFallbackOtp }));
+        }
+        if (nextFallbackResetToken) {
+            setForm((prev) => ({ ...prev, resetToken: nextFallbackResetToken }));
+        }
+    };
+
+    const copyText = async (value, label) => {
+        if (!value) return;
+        try {
+            await navigator.clipboard.writeText(String(value));
+            setInfo(`${label} copied to clipboard.`);
+        } catch {
+            setInfo(`Unable to copy automatically. Please copy this ${label.toLowerCase()} manually.`);
+        }
+    };
 
     const submitLogin = async () => {
         if (!validateEmail()) {
@@ -149,14 +189,7 @@ export default function AuthModal({ onClose }) {
                 range_km: form.range_km,
             });
 
-            setInfo(res.data?.message || "Account created. Verify your email OTP.");
-            if (res.data?.deliveryFailed) {
-                setInfo((prev) => `${prev} Email delivery failed; use fallback OTP below.`);
-            }
-            const fallbackOtp = res.data?.fallbackOtp || res.data?.devOtp;
-            if (fallbackOtp) {
-                setInfo((prev) => `${prev} OTP: ${fallbackOtp}`);
-            }
+            setDeliveryInfo(res.data, "Account created. Verify your email OTP.");
             setMode("verifyEmail");
         } catch (err) {
             setError(err.response?.data?.error || "Registration failed");
@@ -195,20 +228,18 @@ export default function AuthModal({ onClose }) {
             setError("Please enter a valid email address");
             return;
         }
+        if (resendCooldown > 0) {
+            setError(`Please wait ${resendCooldown}s before resending OTP`);
+            return;
+        }
 
         setLoading(true);
         try {
             const res = await axios.post("/auth/resend-verification", {
                 email: String(form.email).trim().toLowerCase(),
             });
-            setInfo(res.data?.message || "Verification OTP sent");
-            if (res.data?.deliveryFailed) {
-                setInfo((prev) => `${prev} Email delivery failed; use fallback OTP below.`);
-            }
-            const fallbackOtp = res.data?.fallbackOtp || res.data?.devOtp;
-            if (fallbackOtp) {
-                setInfo((prev) => `${prev} OTP: ${fallbackOtp}`);
-            }
+            setDeliveryInfo(res.data, "Verification OTP sent");
+            setResendCooldown(30);
         } catch (err) {
             setError(err.response?.data?.error || "Failed to resend OTP");
         } finally {
@@ -248,11 +279,7 @@ export default function AuthModal({ onClose }) {
             const res = await axios.post("/auth/forgot-password", {
                 email: String(form.email).trim().toLowerCase(),
             });
-            setInfo(res.data?.message || "Reset instructions sent");
-            const fallbackResetToken = res.data?.fallbackResetToken || res.data?.devResetToken;
-            if (fallbackResetToken) {
-                setInfo((prev) => `${prev} Reset token: ${fallbackResetToken}`);
-            }
+            setDeliveryInfo(res.data, "Reset instructions sent");
             setMode("resetPassword");
         } catch (err) {
             setError(err.response?.data?.error || "Failed to request password reset");
@@ -417,8 +444,22 @@ export default function AuthModal({ onClose }) {
                             value={form.otp}
                             onChange={handle}
                         />
+                        {fallbackOtp && (
+                            <div style={styles.fallbackBox}>
+                                <div style={styles.fallbackTitle}>Fallback OTP</div>
+                                <div style={styles.fallbackValue}>{fallbackOtp}</div>
+                                <div style={styles.fallbackActions}>
+                                    <button type="button" style={styles.secondaryBtn} onClick={() => setForm((prev) => ({ ...prev, otp: fallbackOtp }))}>
+                                        Use OTP
+                                    </button>
+                                    <button type="button" style={styles.secondaryBtn} onClick={() => copyText(fallbackOtp, "OTP")}>
+                                        Copy OTP
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                         <button type="button" style={styles.secondaryBtn} onClick={resendOtp} disabled={loading}>
-                            Resend OTP
+                            {resendCooldown > 0 ? `Resend OTP (${resendCooldown}s)` : "Resend OTP"}
                         </button>
                     </>
                 )}
@@ -446,6 +487,20 @@ export default function AuthModal({ onClose }) {
                             value={form.resetToken}
                             onChange={handle}
                         />
+                        {fallbackResetToken && (
+                            <div style={styles.fallbackBox}>
+                                <div style={styles.fallbackTitle}>Fallback Reset Token</div>
+                                <div style={styles.fallbackValue}>{fallbackResetToken}</div>
+                                <div style={styles.fallbackActions}>
+                                    <button type="button" style={styles.secondaryBtn} onClick={() => setForm((prev) => ({ ...prev, resetToken: fallbackResetToken }))}>
+                                        Use Token
+                                    </button>
+                                    <button type="button" style={styles.secondaryBtn} onClick={() => copyText(fallbackResetToken, "Reset token")}>
+                                        Copy Token
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                         <div style={styles.passwordRow}>
                             <input
                                 style={{ ...styles.input, margin: 0 }}
@@ -625,4 +680,21 @@ const styles = {
     ruleList: { display: "flex", flexWrap: "wrap", gap: 8, fontSize: 11, fontWeight: 600 },
     ruleOk: { color: "#047857" },
     ruleMuted: { color: "#6b7280" },
+    fallbackBox: {
+        border: "1px solid #99f6e4",
+        background: "#f0fdfa",
+        borderRadius: 8,
+        padding: 10,
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+    },
+    fallbackTitle: { fontSize: 12, fontWeight: 700, color: "#115e59" },
+    fallbackValue: {
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        fontSize: 14,
+        color: "#134e4a",
+        wordBreak: "break-all",
+    },
+    fallbackActions: { display: "flex", gap: 8 },
 };
