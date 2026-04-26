@@ -38,11 +38,13 @@ const chargerRoutes = require("./routes/chargers");
 const { router: authRoutes } = require("./routes/auth");
 const reservationRoutes = require("./routes/reservations");
 const adminRoutes = require("./routes/admin");
+const platformRoutes = require("./routes/platform");
 
 app.use("/api/chargers", chargerRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/reservations", reservationRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/platform", platformRoutes);
 
 app.get("/", (req, res) => res.send("Server is running..."));
 

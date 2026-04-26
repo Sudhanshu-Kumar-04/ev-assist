@@ -44,13 +44,14 @@ export default function AdminDashboard({ onClose }) {
 
         {/* Tabs */}
         <div style={s.tabs}>
-          {["overview", "chargers", "reservations", "users", "issues"].map(t => (
+          {["overview", "chargers", "reservations", "users", "issues", "phase3"].map(t => (
             <button key={t} style={{ ...s.tab, ...(tab === t ? s.tabActive : {}) }}
               onClick={() => setTab(t)}>
               {t === "overview" ? "📊 Overview" :
                 t === "chargers" ? "⚡ Chargers" :
                   t === "reservations" ? "📅 Reservations" :
-                    t === "users" ? "👥 Users" : "🚨 Issues"}
+                    t === "users" ? "👥 Users" :
+                      t === "issues" ? "🚨 Issues" : "🚀 Phase 3"}
             </button>
           ))}
         </div>
@@ -62,6 +63,7 @@ export default function AdminDashboard({ onClose }) {
           {tab === "reservations" && <ReservationsTab headers={headers} />}
           {tab === "users" && <UsersTab headers={headers} />}
           {tab === "issues" && <IssuesTab headers={headers} />}
+          {tab === "phase3" && <Phase3Tab headers={headers} />}
         </div>
       </div>
     </div>
@@ -555,6 +557,190 @@ function IssuesTab({ headers }) {
         <button style={s.pageBtn} disabled={page === 1} onClick={() => setPage((p) => p - 1)}>← Prev</button>
         <span style={{ fontSize: 13, padding: "4px 8px" }}>Page {page} of {Math.max(1, Math.ceil(total / LIMIT))}</span>
         <button style={s.pageBtn} disabled={page >= Math.ceil(total / LIMIT)} onClick={() => setPage((p) => p + 1)}>Next →</button>
+      </div>
+    </div>
+  );
+}
+
+function Phase3Tab({ headers }) {
+  const [interopEvents, setInteropEvents] = useState([]);
+  const [invoices, setInvoices] = useState([]);
+  const [fleets, setFleets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [interOpForm, setInteropForm] = useState({
+    provider: "OCPP-Simulator",
+    protocol: "OCPP",
+    eventType: "Heartbeat",
+    externalId: "",
+    payload: '{"status":"ok","source":"admin-dashboard"}',
+  });
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [eventsRes, invoicesRes, fleetsRes] = await Promise.all([
+        axios.get("/platform/interop/events?limit=20", { headers }),
+        axios.get("/platform/payments/invoices", { headers }),
+        axios.get("/platform/fleet/my", { headers }),
+      ]);
+      setInteropEvents(eventsRes.data || []);
+      setInvoices(invoicesRes.data || []);
+      setFleets(fleetsRes.data || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [headers]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const ingestInteropEvent = async () => {
+    try {
+      await axios.post(
+        "/platform/interop/ingest",
+        {
+          provider: interOpForm.provider,
+          protocol: interOpForm.protocol,
+          eventType: interOpForm.eventType,
+          externalId: interOpForm.externalId || null,
+          payload: JSON.parse(interOpForm.payload || "{}"),
+        },
+        { headers }
+      );
+      loadData();
+    } catch (err) {
+      alert(err.response?.data?.error || "Failed to ingest interop event");
+    }
+  };
+
+  if (loading) return <p style={s.loading}>Loading Phase 3 data...</p>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={s.chartBox}>
+        <h4 style={s.chartTitle}>Interoperability Layer (OCPP / OCPI-ready)</h4>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(100px, 1fr))", gap: 8, marginBottom: 8 }}>
+          <input
+            style={s.formInput}
+            placeholder="Provider"
+            value={interOpForm.provider}
+            onChange={(e) => setInteropForm((p) => ({ ...p, provider: e.target.value }))}
+          />
+          <select
+            style={s.formInput}
+            value={interOpForm.protocol}
+            onChange={(e) => setInteropForm((p) => ({ ...p, protocol: e.target.value }))}
+          >
+            <option value="OCPP">OCPP</option>
+            <option value="OCPI">OCPI</option>
+            <option value="RoamingAPI">RoamingAPI</option>
+          </select>
+          <input
+            style={s.formInput}
+            placeholder="Event Type"
+            value={interOpForm.eventType}
+            onChange={(e) => setInteropForm((p) => ({ ...p, eventType: e.target.value }))}
+          />
+          <input
+            style={s.formInput}
+            placeholder="External ID"
+            value={interOpForm.externalId}
+            onChange={(e) => setInteropForm((p) => ({ ...p, externalId: e.target.value }))}
+          />
+          <button style={s.btn} onClick={ingestInteropEvent}>Ingest Event</button>
+        </div>
+        <textarea
+          style={{ ...s.formInput, width: "100%", minHeight: 68, resize: "vertical", fontFamily: "monospace" }}
+          value={interOpForm.payload}
+          onChange={(e) => setInteropForm((p) => ({ ...p, payload: e.target.value }))}
+        />
+        <table style={{ ...s.table, marginTop: 10 }}>
+          <thead>
+            <tr style={s.theadRow}>
+              <th style={s.th}>When</th>
+              <th style={s.th}>Provider</th>
+              <th style={s.th}>Protocol</th>
+              <th style={s.th}>Event</th>
+              <th style={s.th}>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {interopEvents.length === 0 ? (
+              <tr><td colSpan={5} style={{ textAlign: "center", padding: 16, color: "#9ca3af" }}>No interop events yet</td></tr>
+            ) : interopEvents.map((ev) => (
+              <tr key={ev.id} style={s.tbodyRow}>
+                <td style={s.td}>{new Date(ev.processed_at).toLocaleString("en-IN")}</td>
+                <td style={s.td}>{ev.provider}</td>
+                <td style={s.td}>{ev.protocol}</td>
+                <td style={s.td}>{ev.event_type}</td>
+                <td style={s.td}>{ev.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={s.chartBox}>
+        <h4 style={s.chartTitle}>Payments and Invoices</h4>
+        <table style={s.table}>
+          <thead>
+            <tr style={s.theadRow}>
+              <th style={s.th}>Invoice</th>
+              <th style={s.th}>User</th>
+              <th style={s.th}>Amount</th>
+              <th style={s.th}>Payment</th>
+              <th style={s.th}>Status</th>
+              <th style={s.th}>Issued</th>
+            </tr>
+          </thead>
+          <tbody>
+            {invoices.length === 0 ? (
+              <tr><td colSpan={6} style={{ textAlign: "center", padding: 16, color: "#9ca3af" }}>No invoices yet</td></tr>
+            ) : invoices.map((inv) => (
+              <tr key={inv.id} style={s.tbodyRow}>
+                <td style={s.td}>{inv.invoice_number}</td>
+                <td style={s.td}>{inv.user_name || inv.user_email || "—"}</td>
+                <td style={s.td}>₹{Number(inv.total_inr || 0).toFixed(2)}</td>
+                <td style={s.td}>{inv.payment_method || inv.payment_status || "—"}</td>
+                <td style={s.td}>{inv.status}</td>
+                <td style={s.td}>{new Date(inv.issued_at).toLocaleDateString("en-IN")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={s.chartBox}>
+        <h4 style={s.chartTitle}>Fleet and B2B Accounts</h4>
+        <table style={s.table}>
+          <thead>
+            <tr style={s.theadRow}>
+              <th style={s.th}>Fleet</th>
+              <th style={s.th}>Role</th>
+              <th style={s.th}>Members</th>
+              <th style={s.th}>Vehicles</th>
+              <th style={s.th}>Status</th>
+              <th style={s.th}>Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fleets.length === 0 ? (
+              <tr><td colSpan={6} style={{ textAlign: "center", padding: 16, color: "#9ca3af" }}>No fleet accounts linked</td></tr>
+            ) : fleets.map((fleet) => (
+              <tr key={fleet.id} style={s.tbodyRow}>
+                <td style={s.td}>{fleet.name}</td>
+                <td style={s.td}>{fleet.role}</td>
+                <td style={s.td}>{fleet.member_count}</td>
+                <td style={s.td}>{fleet.vehicle_count}</td>
+                <td style={s.td}>{fleet.status}</td>
+                <td style={s.td}>{new Date(fleet.created_at).toLocaleDateString("en-IN")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

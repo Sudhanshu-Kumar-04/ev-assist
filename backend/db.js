@@ -156,6 +156,120 @@ const initDB = async () => {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_charger_issue_reports_created_at ON charger_issue_reports(created_at)`);
     console.log("✅ charger_issue_reports table ready");
 
+    // 7. Interoperability ingestion events (OCPP/OCPI-ready model)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS interop_ingestion_events (
+        id SERIAL PRIMARY KEY,
+        provider VARCHAR(80) NOT NULL,
+        protocol VARCHAR(30) NOT NULL,
+        event_type VARCHAR(80) NOT NULL,
+        external_id VARCHAR(150),
+        payload JSONB NOT NULL,
+        status VARCHAR(20) DEFAULT 'processed',
+        error_message TEXT,
+        processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_interop_events_provider ON interop_ingestion_events(provider)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_interop_events_processed_at ON interop_ingestion_events(processed_at DESC)`);
+    console.log("✅ interop_ingestion_events table ready");
+
+    // 8. Charging sessions and invoices
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS charging_sessions (
+        id SERIAL PRIMARY KEY,
+        reservation_id INTEGER REFERENCES reservations(id) ON DELETE SET NULL,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        charger_id INTEGER REFERENCES chargers(id) ON DELETE SET NULL,
+        energy_kwh DECIMAL(10,2) NOT NULL,
+        energy_price_inr DECIMAL(10,2) NOT NULL,
+        session_fee_inr DECIMAL(10,2) DEFAULT 0,
+        idle_fee_inr DECIMAL(10,2) DEFAULT 0,
+        tax_percent DECIMAL(5,2) DEFAULT 18,
+        payment_status VARCHAR(20) DEFAULT 'pending',
+        payment_method VARCHAR(40),
+        provider_ref VARCHAR(120),
+        started_at TIMESTAMP,
+        ended_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_charging_sessions_user ON charging_sessions(user_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_charging_sessions_created ON charging_sessions(created_at DESC)`);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS invoices (
+        id SERIAL PRIMARY KEY,
+        session_id INTEGER REFERENCES charging_sessions(id) ON DELETE CASCADE,
+        invoice_number VARCHAR(50) UNIQUE NOT NULL,
+        subtotal_inr DECIMAL(10,2) NOT NULL,
+        tax_inr DECIMAL(10,2) NOT NULL,
+        total_inr DECIMAL(10,2) NOT NULL,
+        currency VARCHAR(10) DEFAULT 'INR',
+        status VARCHAR(20) DEFAULT 'issued',
+        issued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        pdf_url TEXT,
+        meta JSONB DEFAULT '{}'::jsonb
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_invoices_session ON invoices(session_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_invoices_issued_at ON invoices(issued_at DESC)`);
+    console.log("✅ charging_sessions and invoices tables ready");
+
+    // 9. Fleet and B2B controls
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS fleet_accounts (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(140) NOT NULL,
+        billing_email VARCHAR(255),
+        status VARCHAR(20) DEFAULT 'active',
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS fleet_members (
+        id SERIAL PRIMARY KEY,
+        fleet_id INTEGER REFERENCES fleet_accounts(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        role VARCHAR(20) DEFAULT 'member',
+        joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(fleet_id, user_id)
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS fleet_vehicles (
+        id SERIAL PRIMARY KEY,
+        fleet_id INTEGER REFERENCES fleet_accounts(id) ON DELETE CASCADE,
+        label VARCHAR(120) NOT NULL,
+        vehicle_model VARCHAR(120),
+        battery_capacity_kwh DECIMAL(8,2),
+        range_km DECIMAL(8,2),
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS fleet_policies (
+        id SERIAL PRIMARY KEY,
+        fleet_id INTEGER UNIQUE REFERENCES fleet_accounts(id) ON DELETE CASCADE,
+        max_session_amount_inr DECIMAL(10,2) DEFAULT 2000,
+        allow_public_chargers BOOLEAN DEFAULT true,
+        allow_fast_chargers BOOLEAN DEFAULT true,
+        idle_fee_cap_inr DECIMAL(10,2) DEFAULT 250,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_fleet_members_user ON fleet_members(user_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_fleet_members_fleet ON fleet_members(fleet_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_fleet_vehicles_fleet ON fleet_vehicles(fleet_id)`);
+    console.log("✅ fleet_accounts, fleet_members, fleet_vehicles, fleet_policies tables ready");
+
     console.log("✅ All database tables initialized");
   } catch (err) {
     console.error("❌ Database initialization error:", err.message);
