@@ -150,6 +150,9 @@ export default function AuthModal({ onClose }) {
             });
 
             setInfo(res.data?.message || "Account created. Verify your email OTP.");
+            if (res.data?.deliveryFailed) {
+                setInfo((prev) => `${prev} Email delivery failed; use fallback OTP below.`);
+            }
             if (res.data?.devOtp) {
                 setInfo((prev) => `${prev} (Dev OTP: ${res.data.devOtp})`);
             }
@@ -198,6 +201,9 @@ export default function AuthModal({ onClose }) {
                 email: String(form.email).trim().toLowerCase(),
             });
             setInfo(res.data?.message || "Verification OTP sent");
+            if (res.data?.deliveryFailed) {
+                setInfo((prev) => `${prev} Email delivery failed; use fallback OTP below.`);
+            }
             if (res.data?.devOtp) {
                 setInfo((prev) => `${prev} (Dev OTP: ${res.data.devOtp})`);
             }

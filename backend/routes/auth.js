@@ -102,12 +102,16 @@ async function sendMail({ to, subject, text, html }) {
     const transporter = getEmailTransporter();
     if (!transporter) {
         console.warn("SMTP not configured; skipping email send");
-        return false;
+        return { sent: false, reason: "SMTP_NOT_CONFIGURED" };
     }
 
     const from = process.env.SMTP_FROM || process.env.SMTP_USER;
     await transporter.sendMail({ from, to, subject, text, html });
-    return true;
+    return { sent: true };
+}
+
+function shouldExposeOtpFallback() {
+    return process.env.ALLOW_OTP_FALLBACK === "true" || process.env.NODE_ENV !== "production";
 }
 
 async function createEmailVerificationOtp(userId) {
@@ -207,7 +211,7 @@ router.post("/register", authRateLimit("register", 6, 15 * 60 * 1000), async (re
         const { otp } = await createEmailVerificationOtp(user.id);
 
         const verifyText = `Your EV Assist verification code is ${otp}. It expires in 10 minutes.`;
-        await sendMail({
+        const mailResult = await sendMail({
             to: user.email,
             subject: "Verify your EV Assist account",
             text: verifyText,
@@ -221,7 +225,12 @@ router.post("/register", authRateLimit("register", 6, 15 * 60 * 1000), async (re
             user: sanitizeUser(user),
         };
 
-        if (process.env.NODE_ENV !== "production" && !process.env.SMTP_HOST) {
+        if (!mailResult.sent) {
+            response.deliveryFailed = true;
+            response.deliveryMessage = "Email service is currently unavailable.";
+        }
+
+        if (shouldExposeOtpFallback() && (!mailResult.sent || !process.env.SMTP_HOST)) {
             response.devOtp = otp;
         }
 
@@ -307,15 +316,19 @@ router.post("/resend-verification", authRateLimit("resend-verification", 5, 15 *
 
         const { otp } = await createEmailVerificationOtp(user.id);
 
-        await sendMail({
+        const mailResult = await sendMail({
             to: user.email,
             subject: "Your EV Assist verification OTP",
             text: `Your EV Assist verification code is ${otp}. It expires in 10 minutes.`,
             html: `<p>Your EV Assist verification code is:</p><h2>${otp}</h2><p>This code expires in 10 minutes.</p>`,
         });
 
-        const response = { message: "Verification OTP sent" };
-        if (process.env.NODE_ENV !== "production" && !process.env.SMTP_HOST) {
+        const response = { message: mailResult.sent ? "Verification OTP sent" : "Email delivery unavailable. Use fallback OTP." };
+        if (!mailResult.sent) {
+            response.deliveryFailed = true;
+            response.deliveryMessage = "Email service is currently unavailable.";
+        }
+        if (shouldExposeOtpFallback() && (!mailResult.sent || !process.env.SMTP_HOST)) {
             response.devOtp = otp;
         }
         return res.json(response);
@@ -460,15 +473,22 @@ router.post("/forgot-password", authRateLimit("forgot-password", 6, 15 * 60 * 10
         const frontendBase = process.env.FRONTEND_URL || "https://ev-assist.onrender.com";
         const resetLink = `${frontendBase}/?resetToken=${rawToken}`;
 
-        await sendMail({
+        const mailResult = await sendMail({
             to: user.email,
             subject: "Reset your EV Assist password",
             text: `Use this reset token: ${rawToken}\n\nOr open: ${resetLink}\n\nToken expires in 30 minutes.`,
             html: `<p>Use this reset token:</p><h2>${rawToken}</h2><p>Or click <a href="${resetLink}">this reset link</a>.</p><p>Token expires in 30 minutes.</p>`,
         });
 
-        const response = { message: "If that account exists, reset instructions have been sent" };
-        if (process.env.NODE_ENV !== "production" && !process.env.SMTP_HOST) {
+        const response = {
+            message: mailResult.sent
+                ? "If that account exists, reset instructions have been sent"
+                : "Email delivery unavailable. Use fallback reset token."
+        };
+        if (!mailResult.sent) {
+            response.deliveryFailed = true;
+        }
+        if (shouldExposeOtpFallback() && (!mailResult.sent || !process.env.SMTP_HOST)) {
             response.devResetToken = rawToken;
         }
 
