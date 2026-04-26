@@ -153,8 +153,9 @@ export default function AuthModal({ onClose }) {
             if (res.data?.deliveryFailed) {
                 setInfo((prev) => `${prev} Email delivery failed; use fallback OTP below.`);
             }
-            if (res.data?.devOtp) {
-                setInfo((prev) => `${prev} (Dev OTP: ${res.data.devOtp})`);
+            const fallbackOtp = res.data?.fallbackOtp || res.data?.devOtp;
+            if (fallbackOtp) {
+                setInfo((prev) => `${prev} OTP: ${fallbackOtp}`);
             }
             setMode("verifyEmail");
         } catch (err) {
@@ -204,8 +205,9 @@ export default function AuthModal({ onClose }) {
             if (res.data?.deliveryFailed) {
                 setInfo((prev) => `${prev} Email delivery failed; use fallback OTP below.`);
             }
-            if (res.data?.devOtp) {
-                setInfo((prev) => `${prev} (Dev OTP: ${res.data.devOtp})`);
+            const fallbackOtp = res.data?.fallbackOtp || res.data?.devOtp;
+            if (fallbackOtp) {
+                setInfo((prev) => `${prev} OTP: ${fallbackOtp}`);
             }
         } catch (err) {
             setError(err.response?.data?.error || "Failed to resend OTP");
@@ -247,8 +249,9 @@ export default function AuthModal({ onClose }) {
                 email: String(form.email).trim().toLowerCase(),
             });
             setInfo(res.data?.message || "Reset instructions sent");
-            if (res.data?.devResetToken) {
-                setInfo((prev) => `${prev} (Dev reset token: ${res.data.devResetToken})`);
+            const fallbackResetToken = res.data?.fallbackResetToken || res.data?.devResetToken;
+            if (fallbackResetToken) {
+                setInfo((prev) => `${prev} Reset token: ${fallbackResetToken}`);
             }
             setMode("resetPassword");
         } catch (err) {

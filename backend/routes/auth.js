@@ -111,7 +111,12 @@ async function sendMail({ to, subject, text, html }) {
 }
 
 function shouldExposeOtpFallback() {
-    return process.env.ALLOW_OTP_FALLBACK === "true" || process.env.NODE_ENV !== "production";
+    const explicit = String(process.env.ALLOW_OTP_FALLBACK || "").trim().toLowerCase();
+    if (explicit === "true") return true;
+    if (explicit === "false") return false;
+
+    // Default to enabled so users are not blocked when SMTP delivery fails.
+    return true;
 }
 
 async function createEmailVerificationOtp(userId) {
@@ -232,6 +237,7 @@ router.post("/register", authRateLimit("register", 6, 15 * 60 * 1000), async (re
 
         if (shouldExposeOtpFallback() && (!mailResult.sent || !process.env.SMTP_HOST)) {
             response.devOtp = otp;
+            response.fallbackOtp = otp;
         }
 
         return res.status(201).json(response);
@@ -330,6 +336,7 @@ router.post("/resend-verification", authRateLimit("resend-verification", 5, 15 *
         }
         if (shouldExposeOtpFallback() && (!mailResult.sent || !process.env.SMTP_HOST)) {
             response.devOtp = otp;
+            response.fallbackOtp = otp;
         }
         return res.json(response);
     } catch (err) {
@@ -490,6 +497,7 @@ router.post("/forgot-password", authRateLimit("forgot-password", 6, 15 * 60 * 10
         }
         if (shouldExposeOtpFallback() && (!mailResult.sent || !process.env.SMTP_HOST)) {
             response.devResetToken = rawToken;
+            response.fallbackResetToken = rawToken;
         }
 
         return res.json(response);
