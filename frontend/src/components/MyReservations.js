@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 
@@ -14,16 +14,16 @@ export default function MyReservations({ onClose }) {
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchReservations = () => {
+  const fetchReservations = useCallback(() => {
     axios.get("/reservations/my", {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(res => setReservations(res.data))
       .catch(console.error)
       .finally(() => setLoading(false));
-  };
+  }, [token]);
 
-  useEffect(() => { fetchReservations(); }, []);
+  useEffect(() => { fetchReservations(); }, [fetchReservations]);
 
   const cancel = async (id) => {
     if (!window.confirm("Cancel this reservation?")) return;

@@ -4,7 +4,7 @@ import WaitTimeBadge from "./WaitTimeBadge";
 import { useAuth } from "../context/AuthContext";
 
 export default function ReservationModal({ station, onClose }) {
-    const { user, token } = useAuth();
+    const { token } = useAuth();
     const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
     const [slots, setSlots] = useState([]);
     const [selectedSlot, setSelectedSlot] = useState(null);

@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
-  PieChart, Pie, Cell, ResponsiveContainer, Legend
+  PieChart, Pie, Cell, ResponsiveContainer
 } from "recharts";
 
 const API = "/admin";
@@ -16,7 +16,7 @@ const PIE_COLORS = ["#10b981", "#f59e0b", "#ef4444", "#6366f1"];
 export default function AdminDashboard({ onClose }) {
   const { token, user } = useAuth();
   const [tab, setTab] = useState("overview");
-  const headers = { Authorization: `Bearer ${token}` };
+  const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
 
   if (user?.role !== "admin") {
     return (
@@ -74,7 +74,7 @@ function OverviewTab({ headers }) {
 
   useEffect(() => {
     axios.get(`${API}/stats`, { headers }).then(r => setStats(r.data)).catch(console.error);
-  }, []);
+  }, [headers]);
 
   if (!stats) return <p style={s.loading}>Loading stats...</p>;
 
@@ -181,13 +181,13 @@ function ChargersTab({ headers }) {
   const [editingCharger, setEditingCharger] = useState(null);
   const LIMIT = 15;
 
-  const fetchChargers = () => {
+  const fetchChargers = useCallback(() => {
     axios.get(`${API}/chargers?page=${page}&limit=${LIMIT}&search=${search}`, { headers })
       .then(r => { setChargers(r.data.chargers); setTotal(r.data.total); })
       .catch(console.error);
-  };
+  }, [headers, page, search]);
 
-  useEffect(() => { fetchChargers(); }, [page, search]);
+  useEffect(() => { fetchChargers(); }, [fetchChargers]);
 
   const deleteCharger = async (id, name) => {
     if (!window.confirm(`Delete "${name}"? This will also remove all its reservations.`)) return;
@@ -337,7 +337,7 @@ function ReservationsTab({ headers }) {
     axios.get(`${API}/reservations?page=${page}&limit=15&status=${statusFilter}`, { headers })
       .then(r => setReservations(r.data))
       .catch(console.error);
-  }, [page, statusFilter]);
+  }, [headers, page, statusFilter]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -406,7 +406,7 @@ function UsersTab({ headers }) {
 
   useEffect(() => {
     axios.get(`${API}/users`, { headers }).then(r => setUsers(r.data)).catch(console.error);
-  }, []);
+  }, [headers]);
 
   return (
     <div>
@@ -450,18 +450,18 @@ function IssuesTab({ headers }) {
   const [updatingId, setUpdatingId] = useState(null);
   const LIMIT = 15;
 
-  const fetchIssues = () => {
+  const fetchIssues = useCallback(() => {
     axios.get(`${API}/issues?page=${page}&limit=${LIMIT}&status=${status}&issueType=${type}`, { headers })
       .then((r) => {
         setIssues(r.data.issues || []);
         setTotal(r.data.total || 0);
       })
       .catch(console.error);
-  };
+  }, [headers, page, status, type]);
 
   useEffect(() => {
     fetchIssues();
-  }, [page, status, type]);
+  }, [fetchIssues]);
 
   const updateStatus = async (issueId, nextStatus) => {
     setUpdatingId(issueId);

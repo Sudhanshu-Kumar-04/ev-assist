@@ -17,7 +17,7 @@ export function useWaitTime(station) {
       .then(res => setPrediction(res.data))
       .catch(() => setPrediction(null))
       .finally(() => setLoading(false));
-  }, [station?.id]);
+  }, [station]);
 
   return { prediction, loading };
 }

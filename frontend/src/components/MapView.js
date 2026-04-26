@@ -1,5 +1,5 @@
 import RoutePlanner from "./RoutePlanner.js";
-import React, { useEffect, useState, useRef, useMemo } from "react";
+import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, ZoomControl } from "react-leaflet";
 import L from "leaflet";
 import axios from "axios";
@@ -9,6 +9,8 @@ import CostEstimator from "./CostEstimator";
 import MyFavorites from "./MyFavorites";
 import { useAuth } from "../context/AuthContext";
 import "leaflet/dist/leaflet.css";
+
+const DEFAULT_LOCATION = { lat: 28.6139, lng: 77.2090 };
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -28,7 +30,7 @@ function MapUpdater({ userLocation, setStations, mapRef }) {
     mapRef.current = map;
   }, [map, mapRef]);
 
-  const fetchNearby = async () => {
+  const fetchNearby = useCallback(async () => {
     try {
       if (!userLocation?.lat || !userLocation?.lng) return;
       const res = await axios.get(
@@ -38,7 +40,7 @@ function MapUpdater({ userLocation, setStations, mapRef }) {
     } catch (err) {
       console.error("Fetch error:", err);
     }
-  };
+  }, [setStations, userLocation]);
 
   useEffect(() => {
     if (!userLocation) return;
@@ -48,7 +50,7 @@ function MapUpdater({ userLocation, setStations, mapRef }) {
       map.off("moveend", fetchNearby);
       map.off("zoomend", fetchNearby);
     };
-  }, [map, userLocation]);
+  }, [fetchNearby, map, userLocation]);
 
   return null;
 }
@@ -158,7 +160,6 @@ function LocateMe({ userLocation, setUserLocation, setStations, isMobile }) {
 }
 
 export default function MapView() {
-  const DEFAULT_LOCATION = { lat: 28.6139, lng: 77.2090 };
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [showControlsPanel, setShowControlsPanel] = useState(false);
   const [routePanelHeight, setRoutePanelHeight] = useState(104);

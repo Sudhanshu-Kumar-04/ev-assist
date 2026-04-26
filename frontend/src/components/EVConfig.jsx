@@ -25,6 +25,7 @@ export default function EVConfig({ onConfigChange }) {
     reservePct,
     targetChargePct,
     legSafetyFactor,
+    onConfigChange,
   ]);
 
   return (

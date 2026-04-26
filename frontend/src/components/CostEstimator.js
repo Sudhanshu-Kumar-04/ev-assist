@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 
@@ -18,14 +18,7 @@ export default function CostEstimator({ station, onClose }) {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Auto-estimate when form is complete
-  useEffect(() => {
-    if (form.battery_capacity_kwh && station?.power_kw) {
-      estimate();
-    }
-  }, [form.current_battery_pct, form.target_battery_pct]);
-
-  const estimate = async () => {
+  const estimate = useCallback(async () => {
     if (!form.battery_capacity_kwh) return;
     setLoading(true);
     try {
@@ -39,7 +32,14 @@ export default function CostEstimator({ station, onClose }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [form, station?.power_kw]);
+
+  // Auto-estimate when form is complete
+  useEffect(() => {
+    if (form.battery_capacity_kwh && station?.power_kw) {
+      estimate();
+    }
+  }, [estimate, form.battery_capacity_kwh, form.current_battery_pct, form.target_battery_pct, station?.power_kw]);
 
   const handle = e => setForm({ ...form, [e.target.name]: e.target.value });
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 
@@ -7,7 +7,7 @@ export default function MyFavorites({ onClose }) {
   const [favorites, setFavorites] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchFavorites = () => {
+  const fetchFavorites = useCallback(() => {
     setLoading(true);
     axios.get("/chargers/favorites", {
       headers: { Authorization: `Bearer ${token}` }
@@ -15,9 +15,9 @@ export default function MyFavorites({ onClose }) {
       .then(res => setFavorites(res.data))
       .catch(console.error)
       .finally(() => setLoading(false));
-  };
+  }, [token]);
 
-  useEffect(() => { fetchFavorites(); }, []);
+  useEffect(() => { fetchFavorites(); }, [fetchFavorites]);
 
   const remove = async (charger) => {
     try {
