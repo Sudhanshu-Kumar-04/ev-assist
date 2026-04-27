@@ -184,8 +184,6 @@ export default function MapView() {
   const [locationQuery, setLocationQuery] = useState("");
   const [isSearchingLocation, setIsSearchingLocation] = useState(false);
   const [searchRadiusKm, setSearchRadiusKm] = useState("50");
-  const [lastSearchCenter, setLastSearchCenter] = useState(null);
-  const [copiedCenterCoords, setCopiedCenterCoords] = useState(false);
   const [recentLocationSearches, setRecentLocationSearches] = useState(() => {
     try {
       const raw = localStorage.getItem("evassist.recentLocationSearches");
@@ -438,7 +436,6 @@ export default function MapView() {
     const radius = Number(searchRadiusKm || 50);
     const nextLocation = { lat: Number(lat), lng: Number(lng) };
     setUserLocation(nextLocation);
-    setLastSearchCenter(nextLocation);
 
     if (mapRef.current) {
       mapRef.current.flyTo([nextLocation.lat, nextLocation.lng], zoom, {
@@ -509,37 +506,6 @@ export default function MapView() {
     }
   }, [fetchChargersAt]);
 
-  const copyCenterCoordinates = useCallback(async () => {
-    const center = lastSearchCenter || userLocation;
-    if (!center) return;
-
-    const lat = Number(center.lat).toFixed(6);
-    const lng = Number(center.lng).toFixed(6);
-    const text = `${lat}, ${lng}`;
-
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const tempInput = document.createElement("textarea");
-        tempInput.value = text;
-        tempInput.setAttribute("readonly", "");
-        tempInput.style.position = "absolute";
-        tempInput.style.left = "-9999px";
-        document.body.appendChild(tempInput);
-        tempInput.select();
-        document.execCommand("copy");
-        document.body.removeChild(tempInput);
-      }
-
-      setCopiedCenterCoords(true);
-      window.setTimeout(() => setCopiedCenterCoords(false), 1200);
-    } catch (err) {
-      console.error("Failed to copy center coordinates:", err);
-      alert("Could not copy coordinates. Please copy them manually.");
-    }
-  }, [lastSearchCenter, userLocation]);
-
   const uniqueStations = useMemo(() => {
     const seen = new Set();
     return filteredStations.filter((station) => {
@@ -568,12 +534,11 @@ export default function MapView() {
 
   if (!userLocation) return <p>Loading map...</p>;
 
-  const routePanelTop = isMobile ? 58 : 10;
+  const routePanelTop = isMobile ? 64 : 10;
   const controlsToggleTop = isMobile
     ? routePanelTop + (showRoutePlanner ? routePanelHeight + 8 : 0)
     : 10;
   const controlsPanelTop = isMobile ? controlsToggleTop + 36 : 54;
-  const centerForBadge = lastSearchCenter || userLocation;
 
   return (
     <>
@@ -582,8 +547,8 @@ export default function MapView() {
         style={{
           position: "absolute",
           top: isMobile ? `${controlsToggleTop}px` : "10px",
-          left: isMobile ? "auto" : "168px",
-          right: isMobile ? "10px" : "auto",
+          left: isMobile ? "10px" : "168px",
+          right: isMobile ? "auto" : "auto",
           zIndex: 1121,
           padding: isMobile ? "6px 10px" : "7px 11px",
           borderRadius: 999,
@@ -896,34 +861,6 @@ export default function MapView() {
           onHeightChange={setRoutePanelHeight}
         />
       )}
-
-      <button
-        onClick={copyCenterCoordinates}
-        title="Click to copy center coordinates"
-        style={{
-          position: "absolute",
-          bottom: isMobile ? "calc(env(safe-area-inset-bottom, 0px) + 176px)" : "88px",
-          right: isMobile ? "10px" : "12px",
-          zIndex: 1110,
-          background: "rgba(255,255,255,0.95)",
-          border: "1px solid #d1d5db",
-          borderRadius: 10,
-          padding: isMobile ? "7px 9px" : "8px 10px",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
-          fontSize: isMobile ? 11 : 12,
-          fontWeight: 600,
-          color: "#111827",
-          maxWidth: isMobile ? "min(220px, calc(100vw - 20px))" : 270,
-          lineHeight: 1.35,
-          textAlign: "left",
-          cursor: "pointer",
-        }}
-      >
-        <div>{copiedCenterCoords ? "Copied center coordinates" : `Search radius: ${searchRadiusKm} km`}</div>
-        <div>
-          Center: {Number(centerForBadge?.lat || 0).toFixed(4)}, {Number(centerForBadge?.lng || 0).toFixed(4)}
-        </div>
-      </button>
 
       <MapContainer
         center={[userLocation.lat, userLocation.lng]}
