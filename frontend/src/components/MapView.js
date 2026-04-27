@@ -181,6 +181,7 @@ export default function MapView() {
   const [minRating, setMinRating] = useState("any");
   const [openNowOnly, setOpenNowOnly] = useState(false);
   const [showNearbyPanel, setShowNearbyPanel] = useState(window.innerWidth > 768);
+  const [showMapActions, setShowMapActions] = useState(false);
   const [locationQuery, setLocationQuery] = useState("");
   const [isSearchingLocation, setIsSearchingLocation] = useState(false);
   const [searchRadiusKm, setSearchRadiusKm] = useState("50");
@@ -543,6 +544,87 @@ export default function MapView() {
   return (
     <>
       <button
+        onClick={() => setShowMapActions((prev) => !prev)}
+        style={{
+          position: "absolute",
+          top: isMobile ? "10px" : "10px",
+          left: "10px",
+          zIndex: 1122,
+          padding: isMobile ? "8px 12px" : "7px 11px",
+          borderRadius: 999,
+          border: "1px solid #d1d5db",
+          background: "rgba(255,255,255,0.95)",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+          fontSize: isMobile ? "12px" : "11px",
+          fontWeight: 700,
+          cursor: "pointer",
+          color: "#111827",
+        }}
+      >
+        {showMapActions ? "Close Actions" : "Map Actions"}
+      </button>
+
+      {showMapActions && (
+        <div
+          style={{
+            position: "absolute",
+            top: isMobile ? "48px" : "44px",
+            left: "10px",
+            zIndex: 1122,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            background: "rgba(255,255,255,0.96)",
+            border: "1px solid #d1d5db",
+            borderRadius: 10,
+            boxShadow: "0 6px 18px rgba(0,0,0,0.16)",
+            padding: 8,
+            width: isMobile ? "min(220px, calc(100vw - 20px))" : 200,
+          }}
+        >
+          <button
+            onClick={() => {
+              setShowNearbyPanel((prev) => !prev);
+              setShowMapActions(false);
+            }}
+            style={{
+              padding: isMobile ? "8px 10px" : "8px 11px",
+              borderRadius: 8,
+              border: "1px solid #d1d5db",
+              background: "#fff",
+              fontSize: isMobile ? 13 : 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              textAlign: "left",
+              color: "#111827",
+            }}
+          >
+            {showNearbyPanel ? "Hide Nearby List" : "Show Nearby List"}
+          </button>
+
+          <button
+            onClick={() => {
+              setShowRoutePlanner((prev) => !prev);
+              setShowMapActions(false);
+            }}
+            style={{
+              padding: isMobile ? "8px 10px" : "8px 11px",
+              borderRadius: 8,
+              border: "1px solid #d1d5db",
+              background: "#fff",
+              fontSize: isMobile ? 13 : 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              textAlign: "left",
+              color: "#111827",
+            }}
+          >
+            {showRoutePlanner ? "Hide Route" : "Find Route"}
+          </button>
+        </div>
+      )}
+
+      <button
         onClick={() => setShowControlsPanel((prev) => !prev)}
         style={{
           position: "absolute",
@@ -831,28 +913,6 @@ export default function MapView() {
           Nearby chargers shown: {uniqueStations.length} (within {searchRadiusKm}km of selected location)
         </div>
       </div>
-      <button
-        onClick={() => setShowRoutePlanner((prev) => !prev)}
-        style={{
-          position: "absolute",
-          top: isMobile ? `${routePanelTop}px` : "10px",
-          left: isMobile ? "auto" : "320px",
-          right: isMobile ? "10px" : "auto",
-          zIndex: 1121,
-          padding: isMobile ? "6px 10px" : "7px 11px",
-          borderRadius: 999,
-          border: "1px solid #d1d5db",
-          background: "rgba(255,255,255,0.95)",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
-          fontSize: isMobile ? "12px" : "11px",
-          fontWeight: 700,
-          cursor: "pointer",
-          color: "#111827",
-        }}
-      >
-        {showRoutePlanner ? "Hide Route" : "Find Route"}
-      </button>
-
       {showRoutePlanner && (
         <RoutePlanner
           setStations={setStations}
@@ -997,28 +1057,6 @@ export default function MapView() {
           </Marker>
         ))}
       </MapContainer>
-
-      <button
-        onClick={() => setShowNearbyPanel((prev) => !prev)}
-        style={{
-          position: "absolute",
-          left: 10,
-          right: "auto",
-          top: isMobile ? "calc(env(safe-area-inset-top, 0px) + 10px)" : "10px",
-          zIndex: 1120,
-          border: "1px solid #d1d5db",
-          borderRadius: 999,
-          background: "#fff",
-          boxShadow: "0 4px 10px rgba(0,0,0,0.16)",
-          padding: isMobile ? "8px 12px" : "7px 11px",
-          fontSize: isMobile ? 12 : 11,
-          fontWeight: 700,
-          color: "#111827",
-          cursor: "pointer",
-        }}
-      >
-        {showNearbyPanel ? "Hide Nearby List" : "Show Nearby List"}
-      </button>
 
       {showNearbyPanel && (
         <div style={{
