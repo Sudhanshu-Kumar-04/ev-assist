@@ -22,8 +22,8 @@ L.Icon.Default.mergeOptions({
     "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
 });
 
-// MapUpdater - always fetches chargers within 50km of user location
-function MapUpdater({ userLocation, setStations, mapRef }) {
+// MapUpdater - fetches chargers within selected radius of user location
+function MapUpdater({ userLocation, setStations, mapRef, radiusKm }) {
   const map = useMap();
 
   useEffect(() => {
@@ -34,13 +34,13 @@ function MapUpdater({ userLocation, setStations, mapRef }) {
     try {
       if (!userLocation?.lat || !userLocation?.lng) return;
       const res = await axios.get(
-        `/chargers?lat=${userLocation.lat}&lng=${userLocation.lng}&radius=50`
+        `/chargers?lat=${userLocation.lat}&lng=${userLocation.lng}&radius=${radiusKm}`
       );
       setStations(res.data);
     } catch (err) {
       console.error("Fetch error:", err);
     }
-  }, [setStations, userLocation]);
+  }, [radiusKm, setStations, userLocation]);
 
   useEffect(() => {
     if (!userLocation) return;
@@ -85,7 +85,7 @@ function parseApproxCostPerKwh(station) {
   return Number.isFinite(value) ? value : null;
 }
 
-function LocateMe({ userLocation, setUserLocation, setStations, isMobile }) {
+function LocateMe({ userLocation, setUserLocation, setStations, isMobile, radiusKm }) {
   const map = useMap();
 
   const goToMyLocation = () => {
@@ -103,7 +103,7 @@ function LocateMe({ userLocation, setUserLocation, setStations, isMobile }) {
             animate: true,
             duration: 1.5,
           });
-          axios.get(`/chargers?lat=${lat}&lng=${lng}&radius=50`)
+          axios.get(`/chargers?lat=${lat}&lng=${lng}&radius=${radiusKm}`)
             .then((res) => setStations(res.data))
             .catch(console.error);
         },
@@ -113,7 +113,7 @@ function LocateMe({ userLocation, setUserLocation, setStations, isMobile }) {
             animate: true,
             duration: 1.2,
           });
-          axios.get(`/chargers?lat=${fallback.lat}&lng=${fallback.lng}&radius=50`)
+          axios.get(`/chargers?lat=${fallback.lat}&lng=${fallback.lng}&radius=${radiusKm}`)
             .then((res) => setStations(res.data))
             .catch(console.error);
         },
@@ -127,7 +127,7 @@ function LocateMe({ userLocation, setUserLocation, setStations, isMobile }) {
       animate: true,
       duration: 1.2,
     });
-    axios.get(`/chargers?lat=${fallback.lat}&lng=${fallback.lng}&radius=50`)
+    axios.get(`/chargers?lat=${fallback.lat}&lng=${fallback.lng}&radius=${radiusKm}`)
       .then((res) => setStations(res.data))
       .catch(console.error);
   };
@@ -181,6 +181,20 @@ export default function MapView() {
   const [minRating, setMinRating] = useState("any");
   const [openNowOnly, setOpenNowOnly] = useState(false);
   const [showNearbyPanel, setShowNearbyPanel] = useState(window.innerWidth > 768);
+  const [locationQuery, setLocationQuery] = useState("");
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+  const [searchRadiusKm, setSearchRadiusKm] = useState("50");
+  const [lastSearchCenter, setLastSearchCenter] = useState(null);
+  const [copiedCenterCoords, setCopiedCenterCoords] = useState(false);
+  const [recentLocationSearches, setRecentLocationSearches] = useState(() => {
+    try {
+      const raw = localStorage.getItem("evassist.recentLocationSearches");
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.slice(0, 5) : [];
+    } catch {
+      return [];
+    }
+  });
   const mapRef = useRef(null);
 
   useEffect(() => {
@@ -404,6 +418,128 @@ export default function MapView() {
     return sorted;
   }, [stations, openNowOnly, plugFilter, minRating, sortBy]);
 
+  const saveRecentSearch = useCallback((entry) => {
+    setRecentLocationSearches((prev) => {
+      const deduped = prev.filter(
+        (item) =>
+          String(item.label || "").toLowerCase() !== String(entry.label || "").toLowerCase()
+      );
+      const next = [entry, ...deduped].slice(0, 5);
+      try {
+        localStorage.setItem("evassist.recentLocationSearches", JSON.stringify(next));
+      } catch {
+        // Ignore local storage issues and keep in-memory state.
+      }
+      return next;
+    });
+  }, []);
+
+  const fetchChargersAt = useCallback(async (lat, lng, zoom = 12) => {
+    const radius = Number(searchRadiusKm || 50);
+    const nextLocation = { lat: Number(lat), lng: Number(lng) };
+    setUserLocation(nextLocation);
+    setLastSearchCenter(nextLocation);
+
+    if (mapRef.current) {
+      mapRef.current.flyTo([nextLocation.lat, nextLocation.lng], zoom, {
+        animate: true,
+        duration: 1.2,
+      });
+    }
+
+    const chargersRes = await axios.get(
+      `/chargers?lat=${nextLocation.lat}&lng=${nextLocation.lng}&radius=${radius}`
+    );
+    setStations(chargersRes.data || []);
+
+    if (Array.isArray(chargersRes.data) && chargersRes.data.length === 0) {
+      alert(`No chargers found within ${radius}km of this location.`);
+    }
+  }, [searchRadiusKm]);
+
+  const searchLocationChargers = useCallback(async () => {
+    const query = String(locationQuery || "").trim();
+    if (!query) {
+      alert("Please enter a location to search.");
+      return;
+    }
+
+    setIsSearchingLocation(true);
+    try {
+      const geocodeRes = await axios.get(`/chargers/geocode?text=${encodeURIComponent(query)}`);
+      const firstFeature = geocodeRes.data?.features?.[0];
+      const coords = firstFeature?.geometry?.coordinates;
+
+      if (!Array.isArray(coords) || coords.length < 2) {
+        alert("Location not found. Try a more specific place name.");
+        return;
+      }
+
+      const [lng, lat] = coords;
+      if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) {
+        alert("Could not resolve coordinates for this location.");
+        return;
+      }
+
+      await fetchChargersAt(lat, lng, 12);
+      saveRecentSearch({ label: query, lat: Number(lat), lng: Number(lng) });
+    } catch (err) {
+      console.error("Location search error:", err);
+      alert("Location search failed. Please try again.");
+    } finally {
+      setIsSearchingLocation(false);
+    }
+  }, [fetchChargersAt, locationQuery, saveRecentSearch]);
+
+  const searchCurrentMapArea = useCallback(async () => {
+    const center = mapRef.current?.getCenter?.();
+    if (!center) {
+      alert("Map is still loading. Please try again in a moment.");
+      return;
+    }
+
+    setIsSearchingLocation(true);
+    try {
+      await fetchChargersAt(center.lat, center.lng, mapRef.current.getZoom());
+    } catch (err) {
+      console.error("Search map area error:", err);
+      alert("Could not fetch chargers for this map area.");
+    } finally {
+      setIsSearchingLocation(false);
+    }
+  }, [fetchChargersAt]);
+
+  const copyCenterCoordinates = useCallback(async () => {
+    const center = lastSearchCenter || userLocation;
+    if (!center) return;
+
+    const lat = Number(center.lat).toFixed(6);
+    const lng = Number(center.lng).toFixed(6);
+    const text = `${lat}, ${lng}`;
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const tempInput = document.createElement("textarea");
+        tempInput.value = text;
+        tempInput.setAttribute("readonly", "");
+        tempInput.style.position = "absolute";
+        tempInput.style.left = "-9999px";
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        document.execCommand("copy");
+        document.body.removeChild(tempInput);
+      }
+
+      setCopiedCenterCoords(true);
+      window.setTimeout(() => setCopiedCenterCoords(false), 1200);
+    } catch (err) {
+      console.error("Failed to copy center coordinates:", err);
+      alert("Could not copy coordinates. Please copy them manually.");
+    }
+  }, [lastSearchCenter, userLocation]);
+
   const uniqueStations = useMemo(() => {
     const seen = new Set();
     return filteredStations.filter((station) => {
@@ -437,6 +573,7 @@ export default function MapView() {
     ? routePanelTop + (showRoutePlanner ? routePanelHeight + 8 : 0)
     : 10;
   const controlsPanelTop = isMobile ? controlsToggleTop + 36 : 54;
+  const centerForBadge = lastSearchCenter || userLocation;
 
   return (
     <>
@@ -477,6 +614,157 @@ export default function MapView() {
         boxShadow: "0 2px 6px rgba(0, 0, 0, 0.15)",
         width: isMobile ? "min(360px, calc(100vw - 20px))" : "min(880px, calc(100vw - 20px))",
       }}>
+        <div style={{
+          display: "flex",
+          gap: 8,
+          width: "100%",
+          flexWrap: isMobile ? "wrap" : "nowrap",
+        }}>
+          <input
+            value={locationQuery}
+            onChange={(e) => setLocationQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                searchLocationChargers();
+              }
+            }}
+            placeholder="Search location (e.g. Connaught Place, Delhi)"
+            style={{
+              flex: 1,
+              minWidth: isMobile ? "100%" : 260,
+              padding: isMobile ? "7px 10px" : "8px 12px",
+              fontSize: isMobile ? "12px" : "14px",
+              borderRadius: "6px",
+              border: "1px solid #ddd",
+              background: "#fff",
+            }}
+          />
+          <button
+            onClick={searchLocationChargers}
+            disabled={isSearchingLocation}
+            style={{
+              padding: isMobile ? "7px 10px" : "8px 12px",
+              fontSize: isMobile ? "12px" : "14px",
+              borderRadius: "6px",
+              border: "1px solid #ddd",
+              background: isSearchingLocation ? "#e5e7eb" : "#fff",
+              cursor: isSearchingLocation ? "not-allowed" : "pointer",
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+              width: isMobile ? "100%" : "auto",
+            }}
+          >
+            {isSearchingLocation ? "Searching..." : "🔎 Search Location"}
+          </button>
+        </div>
+        <div style={{
+          display: "flex",
+          gap: 8,
+          width: "100%",
+          flexWrap: isMobile ? "wrap" : "nowrap",
+        }}>
+          <select
+            value={searchRadiusKm}
+            onChange={(e) => setSearchRadiusKm(e.target.value)}
+            style={{
+              padding: isMobile ? "7px 10px" : "8px 12px",
+              fontSize: isMobile ? "12px" : "14px",
+              borderRadius: "6px",
+              border: "1px solid #ddd",
+              background: "#fff",
+              minWidth: isMobile ? "calc(50% - 4px)" : 170,
+            }}
+          >
+            <option value="10">Radius: 10 km</option>
+            <option value="25">Radius: 25 km</option>
+            <option value="50">Radius: 50 km</option>
+            <option value="100">Radius: 100 km</option>
+          </select>
+          <button
+            onClick={searchCurrentMapArea}
+            disabled={isSearchingLocation}
+            style={{
+              padding: isMobile ? "7px 10px" : "8px 12px",
+              fontSize: isMobile ? "12px" : "14px",
+              borderRadius: "6px",
+              border: "1px solid #ddd",
+              background: isSearchingLocation ? "#e5e7eb" : "#fff",
+              cursor: isSearchingLocation ? "not-allowed" : "pointer",
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+              width: isMobile ? "calc(50% - 4px)" : "auto",
+            }}
+          >
+            🗺️ Search This Map Area
+          </button>
+        </div>
+        <div style={{
+          display: "flex",
+          gap: 8,
+          width: "100%",
+          flexWrap: isMobile ? "wrap" : "nowrap",
+        }}>
+          <select
+            value=""
+            onChange={(e) => {
+              const value = e.target.value;
+              if (!value) return;
+              const [latRaw, lngRaw, label] = value.split("|");
+              const lat = Number(latRaw);
+              const lng = Number(lngRaw);
+              if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+              setLocationQuery(label || "");
+              fetchChargersAt(lat, lng, 12).catch((err) => {
+                console.error("Recent search load error:", err);
+                alert("Failed to load chargers for selected recent search.");
+              });
+            }}
+            style={{
+              padding: isMobile ? "7px 10px" : "8px 12px",
+              fontSize: isMobile ? "12px" : "14px",
+              borderRadius: "6px",
+              border: "1px solid #ddd",
+              background: "#fff",
+              minWidth: isMobile ? "100%" : 260,
+              flex: 1,
+            }}
+          >
+            <option value="">Recent location searches</option>
+            {recentLocationSearches.map((item) => (
+              <option
+                key={`${item.label}-${item.lat}-${item.lng}`}
+                value={`${item.lat}|${item.lng}|${item.label}`}
+              >
+                {item.label}
+              </option>
+            ))}
+          </select>
+          {recentLocationSearches.length > 0 ? (
+            <button
+              onClick={() => {
+                setRecentLocationSearches([]);
+                try {
+                  localStorage.removeItem("evassist.recentLocationSearches");
+                } catch {
+                  // Ignore local storage issues and keep in-memory state.
+                }
+              }}
+              style={{
+                padding: isMobile ? "7px 10px" : "8px 12px",
+                fontSize: isMobile ? "12px" : "14px",
+                borderRadius: "6px",
+                border: "1px solid #ddd",
+                background: "#fff",
+                cursor: "pointer",
+                fontWeight: 500,
+                width: isMobile ? "100%" : "auto",
+              }}
+            >
+              Clear Recent
+            </button>
+          ) : null}
+        </div>
         {user && (
           <button onClick={() => setShowFavorites(true)} style={{
             padding: isMobile ? "7px 10px" : "8px 12px",
@@ -575,7 +863,7 @@ export default function MapView() {
           Open now
         </label>
         <div style={{ width: "100%", fontSize: 12, color: "#4b5563", fontWeight: 600 }}>
-          Nearby chargers shown: {uniqueStations.length} (within 50km of you)
+          Nearby chargers shown: {uniqueStations.length} (within {searchRadiusKm}km of selected location)
         </div>
       </div>
       <button
@@ -608,6 +896,35 @@ export default function MapView() {
           onHeightChange={setRoutePanelHeight}
         />
       )}
+
+      <button
+        onClick={copyCenterCoordinates}
+        title="Click to copy center coordinates"
+        style={{
+          position: "absolute",
+          bottom: isMobile ? "calc(env(safe-area-inset-bottom, 0px) + 176px)" : "88px",
+          right: isMobile ? "10px" : "12px",
+          zIndex: 1110,
+          background: "rgba(255,255,255,0.95)",
+          border: "1px solid #d1d5db",
+          borderRadius: 10,
+          padding: isMobile ? "7px 9px" : "8px 10px",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+          fontSize: isMobile ? 11 : 12,
+          fontWeight: 600,
+          color: "#111827",
+          maxWidth: isMobile ? "min(220px, calc(100vw - 20px))" : 270,
+          lineHeight: 1.35,
+          textAlign: "left",
+          cursor: "pointer",
+        }}
+      >
+        <div>{copiedCenterCoords ? "Copied center coordinates" : `Search radius: ${searchRadiusKm} km`}</div>
+        <div>
+          Center: {Number(centerForBadge?.lat || 0).toFixed(4)}, {Number(centerForBadge?.lng || 0).toFixed(4)}
+        </div>
+      </button>
+
       <MapContainer
         center={[userLocation.lat, userLocation.lng]}
         zoom={10}
@@ -619,8 +936,8 @@ export default function MapView() {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        <MapUpdater userLocation={userLocation} setStations={setStations} mapRef={mapRef} />
-        <LocateMe userLocation={userLocation} setUserLocation={setUserLocation} setStations={setStations} isMobile={isMobile} />
+        <MapUpdater userLocation={userLocation} setStations={setStations} mapRef={mapRef} radiusKm={Number(searchRadiusKm || 50)} />
+        <LocateMe userLocation={userLocation} setUserLocation={setUserLocation} setStations={setStations} isMobile={isMobile} radiusKm={Number(searchRadiusKm || 50)} />
         <ZoomControl position={isMobile ? "bottomright" : "bottomleft"} />
 
         <Marker position={[userLocation.lat, userLocation.lng]} icon={userIcon}>
@@ -790,7 +1107,7 @@ export default function MapView() {
 
           {uniqueStations.length === 0 ? (
             <div style={{ fontSize: 13, color: "#6b7280", padding: "10px 4px" }}>
-              No chargers match your filters within 50km.
+              No chargers match your filters within {searchRadiusKm}km.
             </div>
           ) : (
             uniqueStations.slice(0, 20).map((station) => (
