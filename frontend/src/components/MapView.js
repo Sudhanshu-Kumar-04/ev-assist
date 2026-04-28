@@ -176,10 +176,7 @@ export default function MapView() {
   const [showFavorites, setShowFavorites] = useState(false);
   const [showRoutePlanner, setShowRoutePlanner] = useState(false);
   const [reportingIssueId, setReportingIssueId] = useState(null);
-  const [sortBy, setSortBy] = useState("distance");
   const [plugFilter, setPlugFilter] = useState("any");
-  const [minRating, setMinRating] = useState("any");
-  const [openNowOnly, setOpenNowOnly] = useState(false);
   const [showNearbyPanel, setShowNearbyPanel] = useState(window.innerWidth > 768);
   const [showMapActions, setShowMapActions] = useState(false);
   const [locationQuery, setLocationQuery] = useState("");
@@ -367,10 +364,6 @@ export default function MapView() {
   const filteredStations = useMemo(() => {
     let list = stations.filter((s) => s.latitude && s.longitude);
 
-    if (openNowOnly) {
-      list = list.filter((s) => s.is_operational === true);
-    }
-
     if (plugFilter === "dc") {
       list = list.filter((s) => {
         const current = String(s.current_type || "").toLowerCase();
@@ -385,37 +378,11 @@ export default function MapView() {
       list = list.filter((s) => Number(s.power_kw) >= 50);
     }
 
-    if (minRating !== "any") {
-      const threshold = Number(minRating);
-      list = list.filter((s) => Number(s.rating || 0) >= threshold);
-    }
-
+    // Default sort: nearest first
     const sorted = [...list];
-    if (sortBy === "rating") {
-      sorted.sort((a, b) => Number(b.rating || -1) - Number(a.rating || -1));
-    } else if (sortBy === "power") {
-      sorted.sort((a, b) => Number(b.power_kw || 0) - Number(a.power_kw || 0));
-    } else if (sortBy === "value") {
-      sorted.sort((a, b) => {
-        const aCost = parseApproxCostPerKwh(a) ?? 12;
-        const bCost = parseApproxCostPerKwh(b) ?? 12;
-        const aReliability = Number(a.reliability_score || 60);
-        const bReliability = Number(b.reliability_score || 60);
-        const aDistance = Number(a.distance_km || 999);
-        const bDistance = Number(b.distance_km || 999);
-
-        const aPenalty = Math.max(0, 70 - aReliability) * 0.18;
-        const bPenalty = Math.max(0, 70 - bReliability) * 0.18;
-
-        const aScore = aCost + aPenalty + aDistance * 0.08;
-        const bScore = bCost + bPenalty + bDistance * 0.08;
-        return aScore - bScore;
-      });
-    } else {
-      sorted.sort((a, b) => Number(a.distance_km || Number.MAX_VALUE) - Number(b.distance_km || Number.MAX_VALUE));
-    }
+    sorted.sort((a, b) => Number(a.distance_km || Number.MAX_VALUE) - Number(b.distance_km || Number.MAX_VALUE));
     return sorted;
-  }, [stations, openNowOnly, plugFilter, minRating, sortBy]);
+  }, [stations, plugFilter]);
 
   const saveRecentSearch = useCallback((entry) => {
     setRecentLocationSearches((prev) => {
@@ -841,23 +808,6 @@ export default function MapView() {
           }}>📅 My Bookings</button>
         )}
         <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value)}
-          style={{
-            padding: isMobile ? "7px 10px" : "8px 12px",
-            fontSize: isMobile ? "12px" : "14px",
-            borderRadius: "6px",
-            border: "1px solid #ddd",
-            background: "#fff",
-            minWidth: isMobile ? "calc(50% - 4px)" : "150px",
-          }}
-        >
-          <option value="distance">Sort: Nearest</option>
-          <option value="rating">Sort: Top Rated</option>
-          <option value="power">Sort: High Power</option>
-          <option value="value">Sort: Cheapest Reliable</option>
-        </select>
-        <select
           value={plugFilter}
           onChange={(e) => setPlugFilter(e.target.value)}
           style={{
@@ -874,41 +824,7 @@ export default function MapView() {
           <option value="ac">AC</option>
           <option value="fast">Fast (50kW+)</option>
         </select>
-        <select
-          value={minRating}
-          onChange={(e) => setMinRating(e.target.value)}
-          style={{
-            padding: isMobile ? "7px 10px" : "8px 12px",
-            fontSize: isMobile ? "12px" : "14px",
-            borderRadius: "6px",
-            border: "1px solid #ddd",
-            background: "#fff",
-            minWidth: isMobile ? "calc(50% - 4px)" : "150px",
-          }}
-        >
-          <option value="any">Any rating</option>
-          <option value="4">4.0+</option>
-          <option value="4.5">4.5+</option>
-        </select>
-        <label style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          fontSize: isMobile ? 12 : 14,
-          fontWeight: 500,
-          background: "#fff",
-          border: "1px solid #ddd",
-          borderRadius: 6,
-          padding: isMobile ? "7px 10px" : "8px 12px",
-          minWidth: isMobile ? "calc(50% - 4px)" : "130px",
-        }}>
-          <input
-            type="checkbox"
-            checked={openNowOnly}
-            onChange={(e) => setOpenNowOnly(e.target.checked)}
-          />
-          Open now
-        </label>
+
         <div style={{ width: "100%", fontSize: 12, color: "#4b5563", fontWeight: 600 }}>
           Nearby chargers shown: {uniqueStations.length} (within {searchRadiusKm}km of selected location)
         </div>
