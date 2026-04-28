@@ -594,7 +594,7 @@ export default function MapView() {
           )}
         </>
       ) : (
-        <div style={{ position: "absolute", top: "10px", left: "10px", zIndex: 1122, display: "flex", gap: 8 }}>
+        <div style={{ position: "absolute", top: "10px", left: "10px", zIndex: 1122, display: "flex", gap: 8, alignItems: 'center' }}>
           <button
             onClick={() => setShowNearbyPanel((prev) => !prev)}
             style={{
@@ -628,30 +628,48 @@ export default function MapView() {
           >
             {showRoutePlanner ? "Hide Route" : "Find Route"}
           </button>
+          <button
+            onClick={() => setShowControlsPanel((prev) => !prev)}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 999,
+              border: "1px solid #d1d5db",
+              background: "rgba(255,255,255,0.95)",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+              fontSize: "11px",
+              fontWeight: 700,
+              cursor: "pointer",
+              color: "#111827",
+            }}
+          >
+            {showControlsPanel ? "Hide Controls" : "Show Controls"}
+          </button>
         </div>
       )}
 
-      <button
-        onClick={() => setShowControlsPanel((prev) => !prev)}
-        style={{
-          position: "absolute",
-          top: isMobile ? `${controlsToggleTop}px` : `${controlsToggleTop}px`,
-          left: isMobile ? "10px" : "auto",
-          right: isMobile ? "auto" : "10px",
-          zIndex: 1121,
-          padding: isMobile ? "6px 10px" : "7px 11px",
-          borderRadius: 999,
-          border: "1px solid #d1d5db",
-          background: "rgba(255,255,255,0.95)",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
-          fontSize: isMobile ? "12px" : "11px",
-          fontWeight: 700,
-          cursor: "pointer",
-          color: "#111827",
-        }}
-      >
-        {showControlsPanel ? "Hide Controls" : "Show Controls"}
-      </button>
+      {isMobile && (
+        <button
+          onClick={() => setShowControlsPanel((prev) => !prev)}
+          style={{
+            position: "absolute",
+            top: isMobile ? `${controlsToggleTop}px` : `${controlsToggleTop}px`,
+            left: isMobile ? "10px" : "auto",
+            right: isMobile ? "auto" : "10px",
+            zIndex: 1121,
+            padding: isMobile ? "6px 10px" : "7px 11px",
+            borderRadius: 999,
+            border: "1px solid #d1d5db",
+            background: "rgba(255,255,255,0.95)",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+            fontSize: isMobile ? "12px" : "11px",
+            fontWeight: 700,
+            cursor: "pointer",
+            color: "#111827",
+          }}
+        >
+          {showControlsPanel ? "Hide Controls" : "Show Controls"}
+        </button>
+      )}
 
       <div style={{
         padding: "10px",
