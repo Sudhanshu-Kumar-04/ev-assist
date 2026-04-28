@@ -652,7 +652,8 @@ export default function MapView() {
           onClick={() => setShowControlsPanel((prev) => !prev)}
           style={{
             position: "absolute",
-            top: isMobile ? `${controlsToggleTop}px` : `${controlsToggleTop}px`,
+            // place just under the Map Actions button on mobile (small gap)
+            top: isMobile ? "56px" : `${controlsToggleTop}px`,
             left: isMobile ? "10px" : "auto",
             right: isMobile ? "auto" : "10px",
             zIndex: 1121,
