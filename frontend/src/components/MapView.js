@@ -635,9 +635,9 @@ export default function MapView() {
         onClick={() => setShowControlsPanel((prev) => !prev)}
         style={{
           position: "absolute",
-          top: isMobile ? `${controlsToggleTop}px` : "10px",
-          left: isMobile ? "10px" : "168px",
-          right: isMobile ? "auto" : "auto",
+          top: isMobile ? `${controlsToggleTop}px` : `${controlsToggleTop}px`,
+          left: isMobile ? "10px" : "auto",
+          right: isMobile ? "auto" : "10px",
           zIndex: 1121,
           padding: isMobile ? "6px 10px" : "7px 11px",
           borderRadius: 999,
