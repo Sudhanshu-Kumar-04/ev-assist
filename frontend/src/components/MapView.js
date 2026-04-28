@@ -510,59 +510,102 @@ export default function MapView() {
 
   return (
     <>
-      <button
-        onClick={() => setShowMapActions((prev) => !prev)}
-        style={{
-          position: "absolute",
-          top: isMobile ? "10px" : "10px",
-          left: "10px",
-          zIndex: 1122,
-          padding: isMobile ? "8px 12px" : "7px 11px",
-          borderRadius: 999,
-          border: "1px solid #d1d5db",
-          background: "rgba(255,255,255,0.95)",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
-          fontSize: isMobile ? "12px" : "11px",
-          fontWeight: 700,
-          cursor: "pointer",
-          color: "#111827",
-        }}
-      >
-        {showMapActions ? "Close Actions" : "Map Actions"}
-      </button>
-
-      {showMapActions && (
-        <div
-          style={{
-            position: "absolute",
-            top: isMobile ? "48px" : "44px",
-            left: "10px",
-            zIndex: 1122,
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            background: "rgba(255,255,255,0.96)",
-            border: "1px solid #d1d5db",
-            borderRadius: 10,
-            boxShadow: "0 6px 18px rgba(0,0,0,0.16)",
-            padding: 8,
-            width: isMobile ? "min(220px, calc(100vw - 20px))" : 200,
-          }}
-        >
+      {isMobile ? (
+        <>
           <button
-            onClick={() => {
-              setShowNearbyPanel((prev) => !prev);
-              setShowMapActions(false);
-            }}
+            onClick={() => setShowMapActions((prev) => !prev)}
             style={{
-              padding: isMobile ? "8px 10px" : "8px 11px",
-              borderRadius: 8,
+              position: "absolute",
+              top: isMobile ? "10px" : "10px",
+              left: "10px",
+              zIndex: 1122,
+              padding: isMobile ? "8px 12px" : "7px 11px",
+              borderRadius: 999,
               border: "1px solid #d1d5db",
-              background: "#fff",
-              fontSize: isMobile ? 13 : 12,
+              background: "rgba(255,255,255,0.95)",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+              fontSize: isMobile ? "12px" : "11px",
               fontWeight: 700,
               cursor: "pointer",
-              textAlign: "left",
+              color: "#111827",
+            }}
+          >
+            {showMapActions ? "Close Actions" : "Map Actions"}
+          </button>
+
+          {showMapActions && (
+            <div
+              style={{
+                position: "absolute",
+                top: isMobile ? "48px" : "44px",
+                left: "10px",
+                zIndex: 1122,
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                background: "rgba(255,255,255,0.96)",
+                border: "1px solid #d1d5db",
+                borderRadius: 10,
+                boxShadow: "0 6px 18px rgba(0,0,0,0.16)",
+                padding: 8,
+                width: isMobile ? "min(220px, calc(100vw - 20px))" : 200,
+              }}
+            >
+              <button
+                onClick={() => {
+                  setShowNearbyPanel((prev) => !prev);
+                  setShowMapActions(false);
+                }}
+                style={{
+                  padding: isMobile ? "8px 10px" : "8px 11px",
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  background: "#fff",
+                  fontSize: isMobile ? 13 : 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  color: "#111827",
+                }}
+              >
+                {showNearbyPanel ? "Hide Nearby List" : "Show Nearby List"}
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowRoutePlanner((prev) => !prev);
+                  setShowMapActions(false);
+                }}
+                style={{
+                  padding: isMobile ? "8px 10px" : "8px 11px",
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  background: "#fff",
+                  fontSize: isMobile ? 13 : 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  color: "#111827",
+                }}
+              >
+                {showRoutePlanner ? "Hide Route" : "Find Route"}
+              </button>
+            </div>
+          )}
+        </>
+      ) : (
+        <div style={{ position: "absolute", top: "10px", left: "10px", zIndex: 1122, display: "flex", gap: 8 }}>
+          <button
+            onClick={() => setShowNearbyPanel((prev) => !prev)}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 999,
+              border: "1px solid #d1d5db",
+              background: "rgba(255,255,255,0.95)",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+              fontSize: "11px",
+              fontWeight: 700,
+              cursor: "pointer",
               color: "#111827",
             }}
           >
@@ -570,19 +613,16 @@ export default function MapView() {
           </button>
 
           <button
-            onClick={() => {
-              setShowRoutePlanner((prev) => !prev);
-              setShowMapActions(false);
-            }}
+            onClick={() => setShowRoutePlanner((prev) => !prev)}
             style={{
-              padding: isMobile ? "8px 10px" : "8px 11px",
-              borderRadius: 8,
+              padding: "8px 12px",
+              borderRadius: 999,
               border: "1px solid #d1d5db",
-              background: "#fff",
-              fontSize: isMobile ? 13 : 12,
+              background: "rgba(255,255,255,0.95)",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+              fontSize: "11px",
               fontWeight: 700,
               cursor: "pointer",
-              textAlign: "left",
               color: "#111827",
             }}
           >
