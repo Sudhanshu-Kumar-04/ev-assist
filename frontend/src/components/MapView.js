@@ -77,12 +77,18 @@ function getPowerLabel(station) {
   return "Standard";
 }
 
-function parseApproxCostPerKwh(station) {
-  const raw = String(station?.usage_cost || "");
-  const match = raw.match(/(\d+(?:\.\d+)?)/);
-  if (!match) return null;
-  const value = Number(match[1]);
-  return Number.isFinite(value) ? value : null;
+function getWebSocketUrl() {
+  if (typeof window === "undefined") return "";
+
+  try {
+    const baseUrl = axios.defaults.baseURL || window.location.origin;
+    const parsed = new URL(baseUrl, window.location.origin);
+    const protocol = parsed.protocol === "https:" ? "wss:" : "ws:";
+    return `${protocol}//${parsed.host}/api/chargers/ws`;
+  } catch {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${protocol}//${window.location.host}/api/chargers/ws`;
+  }
 }
 
 function LocateMe({ userLocation, setUserLocation, setStations, isMobile, radiusKm }) {
@@ -192,6 +198,8 @@ export default function MapView() {
     }
   });
   const mapRef = useRef(null);
+  const realtimeSocketRef = useRef(null);
+  const realtimeReconnectRef = useRef(null);
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 768);
@@ -473,6 +481,82 @@ export default function MapView() {
       setIsSearchingLocation(false);
     }
   }, [fetchChargersAt]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const mergeIncomingCharger = (incoming) => {
+      if (!incoming?.id) return;
+      const incomingId = Number(incoming.id);
+      if (!Number.isFinite(incomingId)) return;
+
+      setStations((prev) => prev.map((station) => (
+        Number(station.id) === incomingId ? { ...station, ...incoming } : station
+      )));
+
+      setReservingStation((prev) => (
+        prev && Number(prev.id) === incomingId ? { ...prev, ...incoming } : prev
+      ));
+      setEstimatingStation((prev) => (
+        prev && Number(prev.id) === incomingId ? { ...prev, ...incoming } : prev
+      ));
+    };
+
+    const removeIncomingCharger = (chargerId) => {
+      const removedId = Number(chargerId);
+      if (!Number.isFinite(removedId)) return;
+
+      setStations((prev) => prev.filter((station) => Number(station.id) !== removedId));
+      setReservingStation((prev) => (
+        prev && Number(prev.id) === removedId ? null : prev
+      ));
+      setEstimatingStation((prev) => (
+        prev && Number(prev.id) === removedId ? null : prev
+      ));
+    };
+
+    const connect = () => {
+      if (cancelled) return;
+
+      const socketUrl = getWebSocketUrl();
+      if (!socketUrl) return;
+
+      const socket = new WebSocket(socketUrl);
+      realtimeSocketRef.current = socket;
+
+      socket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          if (message.type === "charger_update" && message.charger) {
+            mergeIncomingCharger(message.charger);
+          }
+          if (message.type === "charger_delete" && message.chargerId) {
+            removeIncomingCharger(message.chargerId);
+          }
+        } catch (error) {
+          console.error("Realtime message parse error:", error);
+        }
+      };
+
+      socket.onclose = () => {
+        if (cancelled) return;
+        clearTimeout(realtimeReconnectRef.current);
+        realtimeReconnectRef.current = setTimeout(connect, 3000);
+      };
+
+      socket.onerror = () => {
+        socket.close();
+      };
+    };
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(realtimeReconnectRef.current);
+      realtimeSocketRef.current?.close();
+    };
+  }, []);
 
   const uniqueStations = useMemo(() => {
     const seen = new Set();

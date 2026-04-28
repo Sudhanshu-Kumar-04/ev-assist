@@ -4,6 +4,7 @@ const { pool } = require("../db");
 const axios = require("axios");
 const authenticate = require("../middleware/auth");
 const adminAuth = require("../middleware/adminAuth");
+const { broadcastChargerUpdate } = require("../realtime");
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:5002";
 const ML_FALLBACK_URL = process.env.ML_FALLBACK_URL || "";
 const fetch = (...args) =>
@@ -149,6 +150,134 @@ async function addStationInsights(stations) {
   });
 }
 
+function buildOcmChargerValues(item) {
+  const ocmId = item.ID || null;
+  const title = item.AddressInfo?.Title;
+  const address = item.AddressInfo?.AddressLine1
+    || item.AddressInfo?.Town
+    || item.AddressInfo?.StateOrProvince;
+  const town = item.AddressInfo?.Town || null;
+  const state = item.AddressInfo?.StateOrProvince || null;
+  const latitude = item.AddressInfo?.Latitude;
+  const longitude = item.AddressInfo?.Longitude;
+
+  if (!title || !latitude || !longitude) return null;
+
+  const connections = item.Connections || [];
+  const connection =
+    connections.find((c) => c.ConnectionType?.Title && c.CurrentType?.Title)
+    || connections.find((c) => c.ConnectionType?.Title)
+    || connections[0] || {};
+
+  const power = connection?.PowerKW || null;
+  const connectionType = connection?.ConnectionType?.Title || null;
+  const currentType = connection?.CurrentType?.Title
+    || (power >= 50 ? "DC" : power > 0 ? "AC" : null);
+  const quantity = item.NumberOfPoints || connections.length || 1;
+  const operatorName = item.OperatorInfo?.Title || null;
+  const contactPhone = item.AddressInfo?.ContactTelephone1 || item.AddressInfo?.ContactTelephone2 || null;
+  const websiteUrl = item.AddressInfo?.RelatedURL || item.OperatorInfo?.WebsiteURL || null;
+  const imageUrl = item.MediaItems?.find((m) => m?.ItemURL)?.ItemURL || null;
+  const usageCost = item.UsageCost || null;
+  const statusText = item.StatusType?.Title || null;
+  const isOperational = typeof item.StatusType?.IsOperational === "boolean"
+    ? item.StatusType.IsOperational
+    : null;
+  const userRatings = (item.UserComments || [])
+    .map((c) => Number(c?.Rating))
+    .filter((r) => Number.isFinite(r) && r >= 0 && r <= 5);
+  const reviewCount = userRatings.length;
+  const rating = reviewCount
+    ? Number((userRatings.reduce((sum, r) => sum + r, 0) / reviewCount).toFixed(1))
+    : null;
+
+  return {
+    ocmId,
+    title,
+    address,
+    town,
+    state,
+    latitude,
+    longitude,
+    power,
+    connectionType,
+    currentType,
+    quantity,
+    operatorName,
+    contactPhone,
+    websiteUrl,
+    imageUrl,
+    usageCost,
+    rating,
+    reviewCount,
+    statusText,
+    isOperational,
+  };
+}
+
+async function upsertOcmCharger(item, source = "sync") {
+  const values = buildOcmChargerValues(item);
+  if (!values) return null;
+
+  const r = await pool.query(`
+    INSERT INTO chargers
+      (ocm_id, name, address, town, state, power_kw, connection_type, current_type, quantity,
+       operator_name, contact_phone, website_url, image_url, usage_cost, rating, review_count,
+       status_text, is_operational, location)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
+      ST_SetSRID(ST_MakePoint($19,$20),4326))
+    ON CONFLICT (ocm_id) DO UPDATE SET
+      name = EXCLUDED.name,
+      address = EXCLUDED.address,
+      town = EXCLUDED.town,
+      state = EXCLUDED.state,
+      power_kw = EXCLUDED.power_kw,
+      connection_type = EXCLUDED.connection_type,
+      current_type = EXCLUDED.current_type,
+      quantity = EXCLUDED.quantity,
+      operator_name = EXCLUDED.operator_name,
+      contact_phone = EXCLUDED.contact_phone,
+      website_url = EXCLUDED.website_url,
+      image_url = EXCLUDED.image_url,
+      usage_cost = EXCLUDED.usage_cost,
+      rating = EXCLUDED.rating,
+      review_count = EXCLUDED.review_count,
+      status_text = EXCLUDED.status_text,
+      is_operational = EXCLUDED.is_operational
+    RETURNING
+      id, ocm_id, name, address, town, state, power_kw, connection_type, current_type, quantity,
+      operator_name, contact_phone, website_url, image_url, usage_cost, rating, review_count,
+      status_text, is_operational,
+      ST_Y(location::geometry) AS latitude,
+      ST_X(location::geometry) AS longitude
+  `, [
+    values.ocmId,
+    values.title,
+    values.address,
+    values.town,
+    values.state,
+    values.power,
+    values.connectionType,
+    values.currentType,
+    values.quantity,
+    values.operatorName,
+    values.contactPhone,
+    values.websiteUrl,
+    values.imageUrl,
+    values.usageCost,
+    values.rating,
+    values.reviewCount,
+    values.statusText,
+    values.isOperational,
+    values.longitude,
+    values.latitude,
+  ]);
+
+  const charger = r.rows[0] || null;
+  if (charger) broadcastChargerUpdate(charger, source);
+  return charger;
+}
+
 function syncRateLimit(req, res, next) {
   const now = Date.now();
   const windowMs = 10 * 60 * 1000;
@@ -235,77 +364,12 @@ router.get("/sync-india", adminAuth, syncRateLimit, async (req, res) => {
       });
 
       for (const item of response.data) {
-        const ocmId = item.ID || null;
-        const title = item.AddressInfo?.Title;
-        const address = item.AddressInfo?.AddressLine1
-          || item.AddressInfo?.Town
-          || item.AddressInfo?.StateOrProvince;
-        const town = item.AddressInfo?.Town || null;
-        const state = item.AddressInfo?.StateOrProvince || null;
-        const latitude = item.AddressInfo?.Latitude;
-        const longitude = item.AddressInfo?.Longitude;
-        if (!title || !latitude || !longitude) continue;
-
-        const connections = item.Connections || [];
-        const connection =
-          connections.find(c => c.ConnectionType?.Title && c.CurrentType?.Title)
-          || connections.find(c => c.ConnectionType?.Title)
-          || connections[0] || {};
-
-        const power = connection?.PowerKW || null;
-        const connectionType = connection?.ConnectionType?.Title || null;
-        const currentType = connection?.CurrentType?.Title
-          || (power >= 50 ? "DC" : power > 0 ? "AC" : null);
-        const quantity = item.NumberOfPoints || connections.length || 1;
-        const operatorName = item.OperatorInfo?.Title || null;
-        const contactPhone = item.AddressInfo?.ContactTelephone1 || item.AddressInfo?.ContactTelephone2 || null;
-        const websiteUrl = item.AddressInfo?.RelatedURL || item.OperatorInfo?.WebsiteURL || null;
-        const imageUrl = item.MediaItems?.find((m) => m?.ItemURL)?.ItemURL || null;
-        const usageCost = item.UsageCost || null;
-        const statusText = item.StatusType?.Title || null;
-        const isOperational = typeof item.StatusType?.IsOperational === "boolean"
-          ? item.StatusType.IsOperational
-          : null;
-        const userRatings = (item.UserComments || [])
-          .map((c) => Number(c?.Rating))
-          .filter((r) => Number.isFinite(r) && r >= 0 && r <= 5);
-        const reviewCount = userRatings.length;
-        const rating = reviewCount
-          ? Number((userRatings.reduce((sum, r) => sum + r, 0) / reviewCount).toFixed(1))
-          : null;
-
         try {
-          const r = await pool.query(`
-            INSERT INTO chargers
-              (ocm_id, name, address, town, state, power_kw, connection_type, current_type, quantity,
-               operator_name, contact_phone, website_url, image_url, usage_cost, rating, review_count,
-               status_text, is_operational, location)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-              ST_SetSRID(ST_MakePoint($19,$20),4326))
-            ON CONFLICT (ocm_id) DO UPDATE SET
-              name = EXCLUDED.name,
-              address = EXCLUDED.address,
-              town = EXCLUDED.town,
-              state = EXCLUDED.state,
-              power_kw = EXCLUDED.power_kw,
-              connection_type = EXCLUDED.connection_type,
-              current_type = EXCLUDED.current_type,
-              quantity = EXCLUDED.quantity,
-              operator_name = EXCLUDED.operator_name,
-              contact_phone = EXCLUDED.contact_phone,
-              website_url = EXCLUDED.website_url,
-              image_url = EXCLUDED.image_url,
-              usage_cost = EXCLUDED.usage_cost,
-              rating = EXCLUDED.rating,
-              review_count = EXCLUDED.review_count,
-              status_text = EXCLUDED.status_text,
-              is_operational = EXCLUDED.is_operational
-          `, [ocmId, title, address, town, state, power, connectionType, currentType, quantity,
-            operatorName, contactPhone, websiteUrl, imageUrl, usageCost, rating, reviewCount,
-            statusText, isOperational, longitude, latitude]);
-          if (r.rowCount > 0) totalInserted++;
+          const updatedStation = await upsertOcmCharger(item, "sync-india");
+          if (updatedStation) totalInserted++;
         } catch (e) {
-          console.warn(`OCM upsert failed (id=${ocmId || "null"}, title=${title || "unknown"}): ${e.message}`);
+          const title = item.AddressInfo?.Title || "unknown";
+          console.warn(`OCM upsert failed (title=${title}): ${e.message}`);
         }
       }
 
@@ -350,77 +414,12 @@ router.get("/sync", adminAuth, syncRateLimit, async (req, res) => {
     let inserted = 0;
 
     for (const item of response.data) {
-      const ocmId = item.ID || null;
-      const title = item.AddressInfo?.Title;
-      const address = item.AddressInfo?.AddressLine1
-        || item.AddressInfo?.Town
-        || item.AddressInfo?.StateOrProvince;
-      const town = item.AddressInfo?.Town || null;
-      const state = item.AddressInfo?.StateOrProvince || null;
-      const latitude = item.AddressInfo?.Latitude;
-      const longitude = item.AddressInfo?.Longitude;
-      if (!title || !latitude || !longitude) continue;
-
-      const connections = item.Connections || [];
-      const connection =
-        connections.find(c => c.ConnectionType?.Title && c.CurrentType?.Title)
-        || connections.find(c => c.ConnectionType?.Title)
-        || connections[0] || {};
-
-      const power = connection?.PowerKW || null;
-      const connectionType = connection?.ConnectionType?.Title || null;
-      const currentType = connection?.CurrentType?.Title
-        || (power >= 50 ? "DC" : power > 0 ? "AC" : null);
-      const quantity = item.NumberOfPoints || connections.length || 1;
-      const operatorName = item.OperatorInfo?.Title || null;
-      const contactPhone = item.AddressInfo?.ContactTelephone1 || item.AddressInfo?.ContactTelephone2 || null;
-      const websiteUrl = item.AddressInfo?.RelatedURL || item.OperatorInfo?.WebsiteURL || null;
-      const imageUrl = item.MediaItems?.find((m) => m?.ItemURL)?.ItemURL || null;
-      const usageCost = item.UsageCost || null;
-      const statusText = item.StatusType?.Title || null;
-      const isOperational = typeof item.StatusType?.IsOperational === "boolean"
-        ? item.StatusType.IsOperational
-        : null;
-      const userRatings = (item.UserComments || [])
-        .map((c) => Number(c?.Rating))
-        .filter((r) => Number.isFinite(r) && r >= 0 && r <= 5);
-      const reviewCount = userRatings.length;
-      const rating = reviewCount
-        ? Number((userRatings.reduce((sum, r) => sum + r, 0) / reviewCount).toFixed(1))
-        : null;
-
       try {
-        const r = await pool.query(`
-          INSERT INTO chargers
-            (ocm_id, name, address, town, state, power_kw, connection_type, current_type, quantity,
-             operator_name, contact_phone, website_url, image_url, usage_cost, rating, review_count,
-             status_text, is_operational, location)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-            ST_SetSRID(ST_MakePoint($19,$20), 4326))
-          ON CONFLICT (ocm_id) DO UPDATE SET
-            name            = EXCLUDED.name,
-            address         = EXCLUDED.address,
-            town            = EXCLUDED.town,
-            state           = EXCLUDED.state,
-            power_kw        = EXCLUDED.power_kw,
-            connection_type = EXCLUDED.connection_type,
-            current_type    = EXCLUDED.current_type,
-            quantity        = EXCLUDED.quantity,
-            operator_name   = EXCLUDED.operator_name,
-            contact_phone   = EXCLUDED.contact_phone,
-            website_url     = EXCLUDED.website_url,
-            image_url       = EXCLUDED.image_url,
-            usage_cost      = EXCLUDED.usage_cost,
-            rating          = EXCLUDED.rating,
-            review_count    = EXCLUDED.review_count,
-            status_text     = EXCLUDED.status_text,
-            is_operational  = EXCLUDED.is_operational
-        `, [ocmId, title, address, town, state, power, connectionType, currentType, quantity,
-          operatorName, contactPhone, websiteUrl, imageUrl, usageCost, rating, reviewCount,
-          statusText, isOperational, longitude, latitude]);
-        if (r.rowCount > 0) inserted++;
+        const updatedStation = await upsertOcmCharger(item, "sync");
+        if (updatedStation) inserted++;
       } catch (e) {
-        console.warn(`OCM upsert failed (id=${ocmId || "null"}, title=${title || "unknown"}): ${e.message}`);
+        const title = item.AddressInfo?.Title || "unknown";
+        console.warn(`OCM upsert failed (title=${title}): ${e.message}`);
       }
     }
 

@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const { pool } = require("../db");
 const adminAuth = require("../middleware/adminAuth");
+const { broadcastChargerUpdate, broadcastChargerDelete } = require("../realtime");
 
 // ── Dashboard stats ───────────────────────────────────────
 router.get("/stats", adminAuth, async (req, res) => {
@@ -99,8 +100,12 @@ router.post("/chargers", adminAuth, async (req, res) => {
     const result = await pool.query(`
       INSERT INTO chargers (name, address, power_kw, connection_type, current_type, quantity, location)
       VALUES ($1, $2, $3, $4, $5, $6, ST_SetSRID(ST_MakePoint($7, $8), 4326))
-      RETURNING id
+      RETURNING
+        id, name, address, power_kw, connection_type, current_type, quantity,
+        ST_Y(location::geometry) AS latitude,
+        ST_X(location::geometry) AS longitude
     `, [name, address, power_kw, connection_type, current_type, quantity || 1, longitude, latitude]);
+    broadcastChargerUpdate(result.rows[0], "admin");
     res.status(201).json({ message: "Charger added", id: result.rows[0].id });
   } catch (err) {
     res.status(500).json({ error: "Failed to add charger" });
@@ -111,11 +116,18 @@ router.post("/chargers", adminAuth, async (req, res) => {
 router.put("/chargers/:id", adminAuth, async (req, res) => {
   const { name, address, power_kw, connection_type, current_type, quantity } = req.body;
   try {
-    await pool.query(`
+    const result = await pool.query(`
       UPDATE chargers SET name=$1, address=$2, power_kw=$3,
         connection_type=$4, current_type=$5, quantity=$6
       WHERE id=$7
+      RETURNING
+        id, name, address, power_kw, connection_type, current_type, quantity,
+        ST_Y(location::geometry) AS latitude,
+        ST_X(location::geometry) AS longitude
     `, [name, address, power_kw, connection_type, current_type, quantity, req.params.id]);
+    if (result.rows[0]) {
+      broadcastChargerUpdate(result.rows[0], "admin");
+    }
     res.json({ message: "Updated" });
   } catch (err) {
     res.status(500).json({ error: "Failed to update" });
@@ -126,6 +138,7 @@ router.put("/chargers/:id", adminAuth, async (req, res) => {
 router.delete("/chargers/:id", adminAuth, async (req, res) => {
   try {
     await pool.query("DELETE FROM chargers WHERE id = $1", [req.params.id]);
+    broadcastChargerDelete(req.params.id, "admin");
     res.json({ message: "Deleted" });
   } catch (err) {
     res.status(500).json({ error: "Failed to delete" });

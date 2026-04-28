@@ -1,5 +1,6 @@
 const { spawn } = require("child_process");
 const path = require("path");
+const { createServer } = require("http");
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
@@ -33,6 +34,7 @@ app.use(cors({
 app.use(express.json());
 
 const { initDB } = require("./db");
+const { initRealtime } = require("./realtime");
 
 const chargerRoutes = require("./routes/chargers");
 const { router: authRoutes } = require("./routes/auth");
@@ -49,10 +51,13 @@ app.use("/api/platform", platformRoutes);
 app.get("/", (req, res) => res.send("Server is running..."));
 
 const PORT = process.env.PORT || 5001;
+const server = createServer(app);
+
+initRealtime(server);
 
 // ✅ initDB MUST finish before server starts accepting requests
 initDB().then(() => {
-  app.listen(PORT, () => {
+  server.listen(PORT, () => {
     console.log(`✅ Server running on port ${PORT}`);
   });
 }).catch(err => {
