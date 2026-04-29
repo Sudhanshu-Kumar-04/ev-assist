@@ -200,6 +200,9 @@ export default function MapView() {
   const mapRef = useRef(null);
   const realtimeSocketRef = useRef(null);
   const realtimeReconnectRef = useRef(null);
+  const routeRestoreRef = useRef({
+    origin: null,
+  });
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 768);
@@ -479,6 +482,38 @@ export default function MapView() {
       alert("Could not fetch chargers for this map area.");
     } finally {
       setIsSearchingLocation(false);
+    }
+  }, [fetchChargersAt]);
+
+  const handleRouteStart = useCallback((routeInfo) => {
+    routeRestoreRef.current = {
+      origin: routeInfo?.origin || null,
+    };
+  }, []);
+
+  const clearRouteAndShowChargers = useCallback(async () => {
+    const origin = routeRestoreRef.current?.origin;
+
+    setRoute([]);
+    setShowRoutePlanner(false);
+
+    if (!origin) {
+      return;
+    }
+
+    try {
+      await fetchChargersAt(origin.lat, origin.lng, 12);
+      if (mapRef.current) {
+        mapRef.current.flyTo([origin.lat, origin.lng], 12, {
+          animate: true,
+          duration: 1.2,
+        });
+      }
+      setLocationQuery(origin.label || "");
+      setShowNearbyPanel(true);
+    } catch (err) {
+      console.error("Clear route error:", err);
+      alert("Could not restore chargers for the route start.");
     }
   }, [fetchChargersAt]);
 
@@ -978,6 +1013,8 @@ export default function MapView() {
           setRoute={setRoute}
           isMobile={isMobile}
           onHeightChange={setRoutePanelHeight}
+          onRouteStart={handleRouteStart}
+          onClearRoute={clearRouteAndShowChargers}
         />
       )}
 

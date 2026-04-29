@@ -2,12 +2,13 @@ import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import EVConfig from "./EVConfig";
 
-export default function RoutePlanner({ setStations, setRoute, isMobile = false, onHeightChange }) {
+export default function RoutePlanner({ setStations, setRoute, isMobile = false, onHeightChange, onRouteStart, onClearRoute }) {
     const [from, setFrom] = useState("");
     const [to, setTo] = useState("");
     const [loading, setLoading] = useState(false);
     const [isOpen, setIsOpen] = useState(!isMobile);
     const [recommendations, setRecommendations] = useState(null);
+    const [routeCreated, setRouteCreated] = useState(false);
     const [evProfile, setEvProfile] = useState({
         batteryPct: 60,
         batteryCapacityKwh: 60,
@@ -60,6 +61,13 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false, 
             const [lng1, lat1] = geoFrom.data.features[0].geometry.coordinates;
             const [lng2, lat2] = geoTo.data.features[0].geometry.coordinates;
 
+            if (onRouteStart) {
+                onRouteStart({
+                    origin: { lat: lat1, lng: lng1, label: from },
+                    destination: { lat: lat2, lng: lng2, label: to },
+                });
+            }
+
             const routeRes = await axios.get(
                 `/chargers/route?origin=${lng1},${lat1}&destination=${lng2},${lat2}`
             );
@@ -80,6 +88,7 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false, 
 
             const routePoints = coords.map(([lng, lat]) => ({ lat, lng }));
             setRoute(routePoints);
+            setRouteCreated(true);
 
             // ✅ FIX: Sample every 5th point (was every 10th) for better route coverage
             // Also always include the first and last point (origin & destination)
@@ -231,6 +240,30 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false, 
                         </div>
                     ))}
                 </div>
+            ) : null}
+
+            {routeCreated ? (
+                <button
+                    onClick={() => {
+                        setRouteCreated(false);
+                        setRecommendations(null);
+                        if (onClearRoute) onClearRoute();
+                    }}
+                    style={{
+                        gridColumn: "1 / -1",
+                        marginTop: 2,
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        border: "1px solid #86efac",
+                        background: "#dcfce7",
+                        color: "#166534",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                    }}
+                >
+                    Clear Route and Show Chargers
+                </button>
             ) : null}
         </div>
     );
