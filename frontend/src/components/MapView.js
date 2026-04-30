@@ -517,6 +517,11 @@ export default function MapView() {
     }
   }, [fetchChargersAt]);
 
+  const handleRouteFound = useCallback(() => {
+    // Auto-close planner after successful search so user can focus on map route.
+    setShowRoutePlanner(false);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -1015,6 +1020,7 @@ export default function MapView() {
           onHeightChange={setRoutePanelHeight}
           onRouteStart={handleRouteStart}
           onClearRoute={clearRouteAndShowChargers}
+          onRouteFound={handleRouteFound}
         />
       )}
 

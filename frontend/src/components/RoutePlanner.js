@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import EVConfig from "./EVConfig";
 
-export default function RoutePlanner({ setStations, setRoute, isMobile = false, onHeightChange, onRouteStart, onClearRoute }) {
+export default function RoutePlanner({ setStations, setRoute, isMobile = false, onHeightChange, onRouteStart, onClearRoute, onRouteFound }) {
     const [from, setFrom] = useState("");
     const [to, setTo] = useState("");
     const [loading, setLoading] = useState(false);
@@ -121,6 +121,10 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false, 
             } else {
                 setStations(chargers.data.stations || []);
                 setRecommendations(chargers.data.recommendations || null);
+            }
+
+            if (onRouteFound) {
+                onRouteFound();
             }
 
         } catch (err) {
