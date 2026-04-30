@@ -492,14 +492,15 @@ export default function MapView() {
   }, []);
 
   const clearRouteAndShowChargers = useCallback(async () => {
-    const origin = routeRestoreRef.current?.origin;
+    const origin = routeRestoreRef.current?.origin
+      || (userLocation?.lat && userLocation?.lng
+        ? { lat: userLocation.lat, lng: userLocation.lng, label: "" }
+        : null);
 
     setRoute([]);
     setShowRoutePlanner(false);
 
-    if (!origin) {
-      return;
-    }
+    if (!origin) return;
 
     try {
       await fetchChargersAt(origin.lat, origin.lng, 12);
@@ -515,7 +516,7 @@ export default function MapView() {
       console.error("Clear route error:", err);
       alert("Could not restore chargers for the route start.");
     }
-  }, [fetchChargersAt]);
+  }, [fetchChargersAt, userLocation]);
 
   const handleRouteFound = useCallback(() => {
     // Auto-close planner after successful search so user can focus on map route.
@@ -714,6 +715,28 @@ export default function MapView() {
               >
                 {showRoutePlanner ? "Hide Route" : "Find Route"}
               </button>
+
+              {route.length > 0 ? (
+                <button
+                  onClick={() => {
+                    clearRouteAndShowChargers();
+                    setShowMapActions(false);
+                  }}
+                  style={{
+                    padding: isMobile ? "8px 10px" : "8px 11px",
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    background: "#fff",
+                    fontSize: isMobile ? 13 : 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    textAlign: "left",
+                    color: "#111827",
+                  }}
+                >
+                  Clear Route
+                </button>
+              ) : null}
             </div>
           )}
         </>
@@ -752,6 +775,26 @@ export default function MapView() {
           >
             {showRoutePlanner ? "Hide Route" : "Find Route"}
           </button>
+
+          {route.length > 0 ? (
+            <button
+              onClick={clearRouteAndShowChargers}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 999,
+                border: "1px solid #d1d5db",
+                background: "rgba(255,255,255,0.95)",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+                fontSize: "11px",
+                fontWeight: 700,
+                cursor: "pointer",
+                color: "#111827",
+              }}
+            >
+              Clear Route
+            </button>
+          ) : null}
+
           <button
             onClick={() => setShowControlsPanel((prev) => !prev)}
             style={{
