@@ -985,4 +985,430 @@ router.post("/:id/report-issue", authenticate, async (req, res) => {
   }
 });
 
+// ✅ NEW: Get ETA and trip details for different transportation modes
+router.post("/route/trip-details", async (req, res) => {
+  try {
+    const { origin, destination, vehicleType = "car" } = req.body;
+
+    if (!origin || !destination) {
+      return res.status(400).json({ error: "Origin and destination required" });
+    }
+
+    // Vehicle multipliers for ETA (base 1 for car)
+    const modeMultipliers = {
+      car: 1.0,
+      "two-wheeler": 1.15,
+      bike: 1.25,
+      foot: 3.5,
+      electric_bike: 1.8,
+    };
+
+    const multiplier = modeMultipliers[vehicleType] || 1.0;
+
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${origin};${destination}?overview=full&geometries=geojson`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (!data.routes || data.routes.length === 0) {
+        return res.status(400).json({ error: "Route not found" });
+      }
+
+      const route = data.routes[0];
+      const distanceKm = route.distance / 1000;
+      const baseTimeMinutes = route.duration / 60;
+      const adjustedTimeMinutes = Math.round(baseTimeMinutes * multiplier);
+
+      const now = new Date();
+      const arrivalTime = new Date(now.getTime() + adjustedTimeMinutes * 60000);
+
+      res.json({
+        vehicleType,
+        distanceKm: Number(distanceKm.toFixed(1)),
+        estimatedTimeMinutes: adjustedTimeMinutes,
+        estimatedTimeFormatted: `${Math.floor(adjustedTimeMinutes / 60)}h ${adjustedTimeMinutes % 60}m`,
+        arrivalTime: arrivalTime.toISOString(),
+        arrivalTimeFormatted: arrivalTime.toLocaleString("en-IN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+          day: "2-digit",
+          month: "short",
+        }),
+        geometry: route.geometry,
+      });
+    } catch (err) {
+      console.error("OSRM Error:", err.message);
+      res.status(500).json({ error: "Failed to calculate route details" });
+    }
+  } catch (err) {
+    console.error("Trip details error:", err.message);
+    res.status(500).json({ error: "Failed to get trip details" });
+  }
+});
+
+// ✅ NEW: Get multiple route alternatives with different criteria
+router.post("/route/alternatives", async (req, res) => {
+  try {
+    const { origin, destination } = req.body;
+
+    if (!origin || !destination) {
+      return res.status(400).json({ error: "Origin and destination required" });
+    }
+
+    try {
+      // Get fastest route
+      const url = `https://router.project-osrm.org/route/v1/driving/${origin};${destination}?overview=full&geometries=geojson&alternatives=true`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (!data.routes || data.routes.length === 0) {
+        return res.status(400).json({ error: "No routes found" });
+      }
+
+      const alternatives = data.routes.slice(0, 3).map((route, index) => {
+        const distanceKm = route.distance / 1000;
+        const durationMinutes = Math.round(route.duration / 60);
+        const now = new Date();
+        const arrivalTime = new Date(now.getTime() + durationMinutes * 60000);
+
+        return {
+          id: index,
+          label: index === 0 ? "Fastest" : index === 1 ? "Balanced" : "Scenic",
+          distanceKm: Number(distanceKm.toFixed(1)),
+          durationMinutes,
+          durationFormatted: `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m`,
+          arrivalTime: arrivalTime.toLocaleString("en-IN", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          }),
+          geometry: route.geometry,
+        };
+      });
+
+      res.json({ alternatives });
+    } catch (err) {
+      console.error("OSRM Error:", err.message);
+      res.status(500).json({ error: "Failed to get route alternatives" });
+    }
+  } catch (err) {
+    console.error("Alternatives error:", err.message);
+    res.status(500).json({ error: "Failed to get alternatives" });
+  }
+});
+
+// ✅ NEW: Calculate trip legs with charger stops and segment analysis
+router.post("/route/trip-legs", async (req, res) => {
+  try {
+    const { points, chargerStops = [], evProfile = {} } = req.body;
+
+    if (!points || !Array.isArray(points) || points.length < 2) {
+      return res.status(400).json({ error: "At least 2 points required" });
+    }
+
+    const legs = [];
+    const chargerArray = Array.isArray(chargerStops) ? chargerStops : [];
+
+    // Build legs between consecutive charger stops
+    for (let i = 0; i < chargerArray.length; i++) {
+      const startPoint = chargerArray[i];
+      const endPoint = chargerArray[i + 1] || chargerArray[chargerArray.length - 1];
+
+      if (!startPoint || !endPoint) continue;
+
+      const legDistance = Math.sqrt(
+        Math.pow(endPoint.latitude - startPoint.latitude, 2) +
+        Math.pow(endPoint.longitude - startPoint.longitude, 2)
+      ) * 111; // Rough approximation: 1 degree = 111 km
+
+      const baseEfficiency = Number(evProfile.efficiencyKmPerKwh) || 6;
+      const chargingTimeMin = 20; // Estimated charging stop time
+      const drivingTimeMin = Math.round((legDistance / 80) * 60); // Assume 80 km/h avg
+
+      legs.push({
+        legNumber: i + 1,
+        from: startPoint.name || `Stop ${i + 1}`,
+        to: endPoint.name || `Stop ${i + 2}`,
+        distanceKm: Number(legDistance.toFixed(1)),
+        estimatedDrivingMinutes: drivingTimeMin,
+        chargingStopMinutes: chargingTimeMin,
+        totalLegTimeMinutes: drivingTimeMin + chargingTimeMin,
+        chargerDetails: {
+          name: startPoint.name,
+          power: startPoint.power_kw,
+          type: startPoint.connection_type,
+        },
+      });
+    }
+
+    res.json({
+      totalLegs: legs.length,
+      legs,
+      totalDistanceKm: Number(
+        legs.reduce((sum, leg) => sum + leg.distanceKm, 0).toFixed(1)
+      ),
+      totalTimeMinutes: legs.reduce((sum, leg) => sum + leg.totalLegTimeMinutes, 0),
+    });
+  } catch (err) {
+    console.error("Trip legs error:", err.message);
+    res.status(500).json({ error: "Failed to calculate trip legs" });
+  }
+});
+
+// ✅ NEW: Save a route for the user
+router.post("/routes/save", authenticate, async (req, res) => {
+  try {
+    const {
+      routeName,
+      fromLocation,
+      toLocation,
+      fromLat,
+      fromLng,
+      toLat,
+      toLng,
+      distance,
+      duration,
+      vehicleType = "car",
+      chargers = [],
+    } = req.body;
+
+    if (!routeName || !fromLocation || !toLocation) {
+      return res.status(400).json({ error: "Route name and locations required" });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO saved_routes 
+       (user_id, route_name, from_location, to_location, from_lat, from_lng, to_lat, to_lng, 
+        distance_km, duration_minutes, vehicle_type, charger_stops, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
+       RETURNING *`,
+      [
+        req.userId,
+        routeName,
+        fromLocation,
+        toLocation,
+        fromLat,
+        fromLng,
+        toLat,
+        toLng,
+        distance,
+        duration,
+        vehicleType,
+        JSON.stringify(chargers),
+      ]
+    );
+
+    res.json({
+      message: "Route saved successfully 📍",
+      route: result.rows[0],
+    });
+  } catch (err) {
+    console.error("Save route error:", err.message);
+    res.status(500).json({ error: "Failed to save route" });
+  }
+});
+
+// ✅ NEW: Get all saved routes for the user
+router.get("/routes/saved", authenticate, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, route_name, from_location, to_location, distance_km, duration_minutes, 
+              vehicle_type, charger_stops, created_at, updated_at
+       FROM saved_routes
+       WHERE user_id = $1
+       ORDER BY created_at DESC`,
+      [req.userId]
+    );
+
+    const routes = result.rows.map((route) => ({
+      ...route,
+      charger_stops: JSON.parse(route.charger_stops || "[]"),
+    }));
+
+    res.json({ routes });
+  } catch (err) {
+    console.error("Get saved routes error:", err.message);
+    res.status(500).json({ error: "Failed to fetch saved routes" });
+  }
+});
+
+// ✅ NEW: Delete a saved route
+router.delete("/routes/:routeId", authenticate, async (req, res) => {
+  try {
+    const routeId = Number(req.params.routeId);
+
+    const result = await pool.query(
+      `DELETE FROM saved_routes 
+       WHERE id = $1 AND user_id = $2
+       RETURNING id`,
+      [routeId, req.userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Route not found" });
+    }
+
+    res.json({ message: "Route deleted successfully" });
+  } catch (err) {
+    console.error("Delete route error:", err.message);
+    res.status(500).json({ error: "Failed to delete route" });
+  }
+});
+
+// ✅ NEW: Get ETA comparison for all vehicle types
+router.post("/route/eta-by-mode", async (req, res) => {
+  try {
+    const { origin, destination } = req.body;
+
+    if (!origin || !destination) {
+      return res.status(400).json({ error: "Origin and destination required" });
+    }
+
+    const modes = {
+      car: { name: "Car", multiplier: 1.0, icon: "🚗", color: "#3B82F6" },
+      "two-wheeler": {
+        name: "Two-Wheeler",
+        multiplier: 1.15,
+        icon: "🏍️",
+        color: "#F59E0B",
+      },
+      bike: { name: "Bike", multiplier: 1.25, icon: "🚲", color: "#10B981" },
+      electric_bike: {
+        name: "E-Bike",
+        multiplier: 1.8,
+        icon: "⚡🚲",
+        color: "#8B5CF6",
+      },
+      foot: { name: "Walking", multiplier: 3.5, icon: "🚶", color: "#6B7280" },
+    };
+
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${origin};${destination}?overview=full`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (!data.routes || data.routes.length === 0) {
+        return res.status(400).json({ error: "Route not found" });
+      }
+
+      const baseRoute = data.routes[0];
+      const distanceKm = baseRoute.distance / 1000;
+      const baseTimeMinutes = baseRoute.duration / 60;
+
+      const etaOptions = Object.entries(modes).map(([key, mode]) => {
+        const adjustedTimeMinutes = Math.round(baseTimeMinutes * mode.multiplier);
+        const now = new Date();
+        const arrivalTime = new Date(now.getTime() + adjustedTimeMinutes * 60000);
+
+        return {
+          mode: key,
+          label: mode.name,
+          icon: mode.icon,
+          color: mode.color,
+          timeMinutes: adjustedTimeMinutes,
+          timeFormatted: `${Math.floor(adjustedTimeMinutes / 60)}h ${adjustedTimeMinutes % 60}m`,
+          arrivalTime: arrivalTime.toLocaleString("en-IN", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+            day: "2-digit",
+            month: "short",
+          }),
+        };
+      });
+
+      res.json({
+        distanceKm: Number(distanceKm.toFixed(1)),
+        etaOptions: etaOptions.sort((a, b) => a.timeMinutes - b.timeMinutes),
+      });
+    } catch (err) {
+      console.error("OSRM Error:", err.message);
+      res.status(500).json({ error: "Failed to calculate ETA" });
+    }
+  } catch (err) {
+    console.error("ETA by mode error:", err.message);
+    res.status(500).json({ error: "Failed to get ETA options" });
+  }
+});
+
+// ✅ NEW: Add a stop to an existing route
+router.post("/routes/:routeId/add-stop", authenticate, async (req, res) => {
+  try {
+    const routeId = Number(req.params.routeId);
+    const { stopName, stopLat, stopLng, stopIndex } = req.body;
+
+    if (!stopName || stopLat === undefined || stopLng === undefined) {
+      return res.status(400).json({ error: "Stop details required" });
+    }
+
+    const route = await pool.query(
+      `SELECT charger_stops FROM saved_routes WHERE id = $1 AND user_id = $2`,
+      [routeId, req.userId]
+    );
+
+    if (route.rows.length === 0) {
+      return res.status(404).json({ error: "Route not found" });
+    }
+
+    const stops = JSON.parse(route.rows[0].charger_stops || "[]");
+    const newStop = { name: stopName, latitude: stopLat, longitude: stopLng };
+
+    if (stopIndex !== undefined && stopIndex >= 0 && stopIndex <= stops.length) {
+      stops.splice(stopIndex, 0, newStop);
+    } else {
+      stops.push(newStop);
+    }
+
+    await pool.query(
+      `UPDATE saved_routes SET charger_stops = $1, updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify(stops), routeId]
+    );
+
+    res.json({ message: "Stop added successfully", stops });
+  } catch (err) {
+    console.error("Add stop error:", err.message);
+    res.status(500).json({ error: "Failed to add stop" });
+  }
+});
+
+// ✅ NEW: Remove a stop from a route
+router.post("/routes/:routeId/remove-stop", authenticate, async (req, res) => {
+  try {
+    const routeId = Number(req.params.routeId);
+    const { stopIndex } = req.body;
+
+    if (stopIndex === undefined) {
+      return res.status(400).json({ error: "Stop index required" });
+    }
+
+    const route = await pool.query(
+      `SELECT charger_stops FROM saved_routes WHERE id = $1 AND user_id = $2`,
+      [routeId, req.userId]
+    );
+
+    if (route.rows.length === 0) {
+      return res.status(404).json({ error: "Route not found" });
+    }
+
+    const stops = JSON.parse(route.rows[0].charger_stops || "[]");
+
+    if (stopIndex < 0 || stopIndex >= stops.length) {
+      return res.status(400).json({ error: "Invalid stop index" });
+    }
+
+    stops.splice(stopIndex, 1);
+
+    await pool.query(
+      `UPDATE saved_routes SET charger_stops = $1, updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify(stops), routeId]
+    );
+
+    res.json({ message: "Stop removed successfully", stops });
+  } catch (err) {
+    console.error("Remove stop error:", err.message);
+    res.status(500).json({ error: "Failed to remove stop" });
+  }
+});
+
 module.exports = router;

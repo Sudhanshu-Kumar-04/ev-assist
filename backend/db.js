@@ -270,6 +270,30 @@ const initDB = async () => {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_fleet_vehicles_fleet ON fleet_vehicles(fleet_id)`);
     console.log("✅ fleet_accounts, fleet_members, fleet_vehicles, fleet_policies tables ready");
 
+    // 10. Saved routes table for route history and bookmarks
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS saved_routes (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        route_name VARCHAR(255) NOT NULL,
+        from_location VARCHAR(255) NOT NULL,
+        to_location VARCHAR(255) NOT NULL,
+        from_lat DECIMAL(10,8),
+        from_lng DECIMAL(11,8),
+        to_lat DECIMAL(10,8),
+        to_lng DECIMAL(11,8),
+        distance_km DECIMAL(10,2),
+        duration_minutes INTEGER,
+        vehicle_type VARCHAR(50) DEFAULT 'car',
+        charger_stops JSONB DEFAULT '[]'::jsonb,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_saved_routes_user ON saved_routes(user_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_saved_routes_created ON saved_routes(created_at DESC)`);
+    console.log("✅ saved_routes table ready");
+
     console.log("✅ All database tables initialized");
   } catch (err) {
     console.error("❌ Database initialization error:", err.message);
