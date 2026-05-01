@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import EVConfig from "./EVConfig";
+import routeService from "../services/routeService";
 
 export default function RoutePlanner({ setStations, setRoute, isMobile = false, onHeightChange, onRouteStart, onClearRoute, onRouteFound }) {
     const [from, setFrom] = useState("");
@@ -9,6 +10,10 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false, 
     const [isOpen, setIsOpen] = useState(!isMobile);
     const [recommendations, setRecommendations] = useState(null);
     const [routeCreated, setRouteCreated] = useState(false);
+    const [routeMeta, setRouteMeta] = useState(null);
+    const [etaComparison, setEtaComparison] = useState(null);
+    const [routeAlternatives, setRouteAlternatives] = useState(null);
+    const [routeToolsLoading, setRouteToolsLoading] = useState({});
     const [evProfile, setEvProfile] = useState({
         batteryPct: 60,
         batteryCapacityKwh: 60,
@@ -89,6 +94,15 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false, 
             const routePoints = coords.map(([lng, lat]) => ({ lat, lng }));
             setRoute(routePoints);
             setRouteCreated(true);
+            setRouteMeta({
+                origin: `${lng1},${lat1}`,
+                destination: `${lng2},${lat2}`,
+                fromLabel: from,
+                toLabel: to,
+                routeDistanceKm: Number(routeData.distance || 0) / 1000,
+            });
+            setEtaComparison(null);
+            setRouteAlternatives(null);
 
             // ✅ FIX: Sample every 5th point (was every 10th) for better route coverage
             // Also always include the first and last point (origin & destination)
@@ -132,6 +146,36 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false, 
             alert("Something went wrong ❌");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const compareVehicleModes = async () => {
+        if (!routeMeta?.origin || !routeMeta?.destination) return;
+
+        setRouteToolsLoading((prev) => ({ ...prev, eta: true }));
+        try {
+            const data = await routeService.getEtaByMode(routeMeta.origin, routeMeta.destination);
+            setEtaComparison(data.etaOptions || []);
+        } catch (err) {
+            console.error("ETA comparison error:", err);
+            alert(err?.response?.data?.error || "Could not load ETA comparison");
+        } finally {
+            setRouteToolsLoading((prev) => ({ ...prev, eta: false }));
+        }
+    };
+
+    const loadRouteAlternatives = async () => {
+        if (!routeMeta?.origin || !routeMeta?.destination) return;
+
+        setRouteToolsLoading((prev) => ({ ...prev, alternatives: true }));
+        try {
+            const data = await routeService.getRouteAlternatives(routeMeta.origin, routeMeta.destination);
+            setRouteAlternatives(data.alternatives || []);
+        } catch (err) {
+            console.error("Route alternatives error:", err);
+            alert(err?.response?.data?.error || "Could not load route alternatives");
+        } finally {
+            setRouteToolsLoading((prev) => ({ ...prev, alternatives: false }));
         }
     };
 
@@ -251,6 +295,9 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false, 
                     onClick={() => {
                         setRouteCreated(false);
                         setRecommendations(null);
+                        setRouteMeta(null);
+                        setEtaComparison(null);
+                        setRouteAlternatives(null);
                         if (onClearRoute) onClearRoute();
                     }}
                     style={{
@@ -268,6 +315,86 @@ export default function RoutePlanner({ setStations, setRoute, isMobile = false, 
                 >
                     Clear Route and Show Chargers
                 </button>
+            ) : null}
+
+            {routeMeta ? (
+                <div
+                    style={{
+                        gridColumn: "1 / -1",
+                        border: "1px solid #dbeafe",
+                        background: "#eff6ff",
+                        borderRadius: 10,
+                        padding: 10,
+                        marginTop: 2,
+                    }}
+                >
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#1e40af" }}>
+                        Route tools
+                    </div>
+                    <div style={{ fontSize: 11, color: "#1d4ed8", marginTop: 3 }}>
+                        {routeMeta.fromLabel || "Origin"} → {routeMeta.toLabel || "Destination"} • {routeMeta.routeDistanceKm.toFixed(1)} km
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                        <button
+                            onClick={compareVehicleModes}
+                            disabled={routeToolsLoading.eta}
+                            style={{
+                                padding: "7px 10px",
+                                borderRadius: 8,
+                                border: "1px solid #93c5fd",
+                                background: routeToolsLoading.eta ? "#dbeafe" : "#fff",
+                                color: "#1d4ed8",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: routeToolsLoading.eta ? "not-allowed" : "pointer",
+                            }}
+                        >
+                            {routeToolsLoading.eta ? "Loading ETA..." : "Compare Modes"}
+                        </button>
+                        <button
+                            onClick={loadRouteAlternatives}
+                            disabled={routeToolsLoading.alternatives}
+                            style={{
+                                padding: "7px 10px",
+                                borderRadius: 8,
+                                border: "1px solid #93c5fd",
+                                background: routeToolsLoading.alternatives ? "#dbeafe" : "#fff",
+                                color: "#1d4ed8",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: routeToolsLoading.alternatives ? "not-allowed" : "pointer",
+                            }}
+                        >
+                            {routeToolsLoading.alternatives ? "Loading..." : "Route Alternatives"}
+                        </button>
+                    </div>
+
+                    {etaComparison?.length ? (
+                        <div style={{ marginTop: 10 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#1e3a8a", marginBottom: 4 }}>
+                                ETA by mode
+                            </div>
+                            {etaComparison.slice(0, 5).map((item) => (
+                                <div key={item.mode} style={{ fontSize: 11, color: "#334155", marginTop: 3 }}>
+                                    {item.icon || "•"} {item.label || item.mode}: {item.timeFormatted || `${item.timeMinutes || 0} min`} • Arrive {item.arrivalTime || "—"}
+                                </div>
+                            ))}
+                        </div>
+                    ) : null}
+
+                    {routeAlternatives?.length ? (
+                        <div style={{ marginTop: 10 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#1e3a8a", marginBottom: 4 }}>
+                                Route alternatives
+                            </div>
+                            {routeAlternatives.slice(0, 3).map((item) => (
+                                <div key={item.id} style={{ fontSize: 11, color: "#334155", marginTop: 3 }}>
+                                    {item.label || `Option ${item.id + 1}`}: {item.durationFormatted || `${item.durationMinutes || 0} min`} • {item.distanceKm || 0} km
+                                </div>
+                            ))}
+                        </div>
+                    ) : null}
+                </div>
             ) : null}
         </div>
     );
